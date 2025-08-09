@@ -20,6 +20,18 @@ const API_KEYS = new Map<string, { teamId: string; userId: string }>();
 
 // Initialize API keys from environment
 export function initializeApiKeys() {
+  // TEMPORARY: Hardcode the key since Render env var isn't working
+  // This should be removed once env vars are working properly
+  if (process.env.NODE_ENV === 'production' || process.env.PORT) {
+    console.log('Production mode detected - using hardcoded keys');
+    API_KEYS.set('sk_prod_001', {
+      teamId: 'team-alpha',
+      userId: 'admin'
+    });
+    console.log('Hardcoded sk_prod_001 key loaded');
+    return;
+  }
+  
   // Check both API_KEYS and API_Keys (Render might use different casing)
   const keysJson = process.env.API_KEYS || process.env.API_Keys || process.env['API_Keys'] || '{}';
   console.log('Initializing API keys from environment:', keysJson);
