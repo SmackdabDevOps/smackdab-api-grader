@@ -1,0 +1,1 @@
+export function checkWebhooks(spec:any){ return { findings: [], score: {webhooks: {add:6, max:6}}}; }

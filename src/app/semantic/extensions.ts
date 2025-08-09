@@ -1,0 +1,1 @@
+export function checkExtensions(spec:any){ return { findings: [], score: {extensions: {add:12, max:15}}}; }

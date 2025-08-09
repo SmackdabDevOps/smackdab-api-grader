@@ -1,0 +1,232 @@
+{
+  "score": 27,
+  "letterGrade": "F",
+  "findings": [
+    {
+      "checkpoint": "OAS-VERSION",
+      "passed": true
+    },
+    {
+      "checkpoint": "OAS-OPERATIONIDS",
+      "passed": true
+    },
+    {
+      "checkpoint": "OAS-NO-PLACEHOLDERS",
+      "passed": true
+    },
+    {
+      "checkpoint": "OAS-INFO-COMPLETE",
+      "passed": true
+    },
+    {
+      "checkpoint": "OAS-X-WEBHOOKS",
+      "passed": true
+    },
+    {
+      "checkpoint": "SEC-OAUTH2-SCOPES",
+      "passed": true
+    },
+    {
+      "checkpoint": "SEC-PER-OP-SECURITY",
+      "passed": true
+    },
+    {
+      "checkpoint": "SEC-BEARER-JWT",
+      "passed": true
+    },
+    {
+      "checkpoint": "SEC-APIKEY-RESTRICT",
+      "passed": true
+    },
+    {
+      "checkpoint": "SEC-WWW-AUTH",
+      "passed": true
+    },
+    {
+      "checkpoint": "MT-ORG-HDR",
+      "passed": true
+    },
+    {
+      "checkpoint": "MT-BIGINT-UUID",
+      "passed": true
+    },
+    {
+      "checkpoint": "MT-BRANCH-HDR",
+      "passed": true
+    },
+    {
+      "checkpoint": "MT-REQUEST-ID",
+      "passed": false,
+      "message": "RequestId parameter not defined"
+    },
+    {
+      "checkpoint": "MT-W3C-TRACE",
+      "passed": false,
+      "message": "W3C TraceParent and TraceState parameters not defined"
+    },
+    {
+      "checkpoint": "HTTP-STATUS-CODES",
+      "passed": false,
+      "message": "Missing response definitions: NotFound"
+    },
+    {
+      "checkpoint": "HTTP-428-PRECONDITION",
+      "passed": true
+    },
+    {
+      "checkpoint": "HTTP-415-MEDIATYPE",
+      "passed": true
+    },
+    {
+      "checkpoint": "HTTP-503-SERVICE",
+      "passed": true
+    },
+    {
+      "checkpoint": "HTTP-409-VS-422",
+      "passed": true
+    },
+    {
+      "checkpoint": "RATE-LIMIT-HEADERS",
+      "passed": false,
+      "message": "Missing rate limit headers: XRateLimitLimit, XRateLimitRemaining, XRateLimitReset"
+    },
+    {
+      "checkpoint": "CACHE-ETAG",
+      "passed": true
+    },
+    {
+      "checkpoint": "CACHE-IF-MATCH",
+      "passed": false,
+      "message": "IfMatch and IfNoneMatch parameters must be defined"
+    },
+    {
+      "checkpoint": "CACHE-304",
+      "passed": true
+    },
+    {
+      "checkpoint": "CACHE-VARY",
+      "passed": true
+    },
+    {
+      "checkpoint": "ENV-RESPONSE-WRAPPER",
+      "passed": false,
+      "message": "ResponseEnvelope schema not defined"
+    },
+    {
+      "checkpoint": "ENV-META-REF",
+      "passed": false,
+      "message": "ResponseMeta schema not defined"
+    },
+    {
+      "checkpoint": "ENV-HATEOAS",
+      "passed": false,
+      "message": "HATEOASLinks schema not defined"
+    },
+    {
+      "checkpoint": "ENV-RFC7807",
+      "passed": true
+    },
+    {
+      "checkpoint": "ENV-CONSISTENT",
+      "passed": false,
+      "message": "Operations not using ResponseEnvelope: GET /products"
+    },
+    {
+      "checkpoint": "PAG-KEYSET",
+      "passed": true
+    },
+    {
+      "checkpoint": "PAG-TIEBREAKER",
+      "passed": false,
+      "message": "Pagination must document tie-breaker rules"
+    },
+    {
+      "checkpoint": "PAG-FILTER-DEEPOBJECT",
+      "passed": false,
+      "message": "Filters parameter not defined"
+    },
+    {
+      "checkpoint": "PAG-FIELDS",
+      "passed": true
+    },
+    {
+      "checkpoint": "PAG-INCLUDE",
+      "passed": true
+    },
+    {
+      "checkpoint": "ASYNC-202",
+      "passed": false,
+      "message": "202 responses missing rate-limit headers: POST /products"
+    },
+    {
+      "checkpoint": "ASYNC-JOB-ENDPOINT",
+      "passed": false,
+      "message": "Job status endpoint not found (/api/v2/{domain}/jobs/{job_id})"
+    },
+    {
+      "checkpoint": "ASYNC-JOB-SCHEMA",
+      "passed": false,
+      "message": "AsyncJobStatus schema not defined"
+    },
+    {
+      "checkpoint": "ASYNC-IDEMPOTENCY",
+      "passed": true
+    },
+    {
+      "checkpoint": "ASYNC-IDEMPOTENCY-DOCS",
+      "passed": false,
+      "message": "Idempotency description must document scope, TTL, and replay behavior"
+    },
+    {
+      "checkpoint": "CONTENT-PATCH",
+      "passed": true
+    },
+    {
+      "checkpoint": "CONTENT-ACCEPT-LANG",
+      "passed": false,
+      "message": "AcceptLanguage parameter not defined"
+    },
+    {
+      "checkpoint": "WH-X-WEBHOOKS",
+      "passed": true
+    },
+    {
+      "checkpoint": "WH-HMAC",
+      "passed": false,
+      "message": "WebhookMeta schema not defined for webhook security"
+    },
+    {
+      "checkpoint": "WH-SECURITY",
+      "passed": false,
+      "message": "WebhookMeta schema required for webhook security"
+    },
+    {
+      "checkpoint": "DOC-BUSINESS-RULES",
+      "passed": false,
+      "message": "API description must document business rules in RULE-XXX-001 format"
+    },
+    {
+      "checkpoint": "DOC-PERF-SLA",
+      "passed": false,
+      "message": "Performance SLAs must be documented"
+    },
+    {
+      "checkpoint": "DOC-TECH-STACK",
+      "passed": false,
+      "message": "Must document Smackdab tech stack: Citus, Dragonfly/Valkey, Pulsar"
+    },
+    {
+      "checkpoint": "DOC-GLOBAL-ERRORS",
+      "passed": false,
+      "message": "Must document global error responses (401, 403, 429, etc.)"
+    },
+    {
+      "checkpoint": "DOC-API-VERSION",
+      "passed": false,
+      "message": "API paths must use /api/v2/{domain}/{resources} format"
+    }
+  ],
+  "autoFailReasons": [
+    "ResponseEnvelope with success, data, meta, _links: ResponseEnvelope schema not defined"
+  ]
+}

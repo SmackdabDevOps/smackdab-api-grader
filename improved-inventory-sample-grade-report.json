@@ -1,0 +1,254 @@
+{
+  "score": 6,
+  "letterGrade": "F",
+  "findings": [
+    {
+      "checkpoint": "OAS-VERSION",
+      "passed": true
+    },
+    {
+      "checkpoint": "MT-ORG-HDR",
+      "passed": true
+    },
+    {
+      "checkpoint": "PAG-KEYSET",
+      "passed": true
+    },
+    {
+      "checkpoint": "OAS-OPERATIONIDS",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "OAS-NO-PLACEHOLDERS",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "OAS-VALID-SCHEMA",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "OAS-X-WEBHOOKS",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "SEC-OAUTH2-SCOPES",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "SEC-PER-OP-SECURITY",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "SEC-BEARER-JWT",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "SEC-APIKEY-RESTRICT",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "SEC-WWW-AUTH",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "MT-BIGINT-UUID",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "MT-BRANCH-HDR",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "MT-REQUEST-ID",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "MT-W3C-TRACE",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "HTTP-STATUS-CODES",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "HTTP-428-PATCH-DELETE",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "HTTP-415-POST-PATCH",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "HTTP-503-GET",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "HTTP-409-VS-422",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "RATE-LIMIT-SUCCESS",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "CACHE-ETAG-GET",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "CACHE-CONDITIONAL",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "CACHE-304",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "CACHE-VARY",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "RESP-ENVELOPE",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "RESP-META-SCHEMA",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "RESP-HATEOAS",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "RESP-RFC7807",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "RESP-CONSISTENCY",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "PAG-TIE-BREAKER",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "PAG-FILTER",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "PAG-SPARSE-FIELDS",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "PAG-INCLUDE",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "ASYNC-202",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "ASYNC-JOB-STATUS",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "ASYNC-JOB-SCHEMA",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "ASYNC-IDEMPOTENCY",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "ASYNC-SEMANTICS",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "CONTENT-PATCH-TYPES",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "WEBHOOK-X-WEBHOOKS",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "WEBHOOK-HMAC",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "WEBHOOK-SECURITY",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "CONTENT-ACCEPT-LANG",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "DOC-BUSINESS-RULES",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "DOC-PERF-SLAS",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "DOC-TECH-STACK",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "DOC-GLOBAL-ERRORS",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    },
+    {
+      "checkpoint": "DOC-API-VERSION",
+      "passed": false,
+      "message": "Not implemented in quick grader"
+    }
+  ],
+  "autoFails": []
+}

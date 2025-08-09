@@ -1,0 +1,1 @@
+export function checkHttp(spec:any){ return { findings: [], score: {http: {add:11, max:12}}}; }

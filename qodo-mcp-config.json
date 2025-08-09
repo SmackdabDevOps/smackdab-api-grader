@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "smackdab-api-grader": {
+      "command": "node",
+      "args": [
+        "/Users/brooksswift/Desktop/Smackdab/api-grader-mcp-starter/node_modules/.bin/tsx",
+        "/Users/brooksswift/Desktop/Smackdab/api-grader-mcp-starter/src/mcp/server.ts"
+      ],
+      "env": {}
+    }
+  }
+}

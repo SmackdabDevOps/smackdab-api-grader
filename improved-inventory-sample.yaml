@@ -1,0 +1,598 @@
+openapi: 3.0.3
+info:
+  title: Inventory Product API (Improved)
+  version: 2.0.0
+  description: Product Core API following Smackdab standards
+  contact:
+    name: API Support
+    email: api-support@smackdab.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+  - url: https://api.smackdab.com/api/v2/inventory
+    description: Production server
+tags:
+  - name: products
+    description: Product management operations
+    x-displayName: Product Management
+paths:
+  /products:
+    get:
+      summary: List products with key-set pagination
+      operationId: listProducts
+      tags:
+        - products
+      description: |
+        Retrieves a paginated list of products using key-set pagination.
+        
+        RULE-INV-001: Products must be filtered by organization_id
+        RULE-INV-002: Default page size is 20, max 100
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - $ref: '#/components/parameters/BranchHeader'
+        - $ref: '#/components/parameters/RequestIdHeader'
+        - $ref: '#/components/parameters/AcceptLanguageHeader'
+        - $ref: '#/components/parameters/AfterKey'
+        - $ref: '#/components/parameters/BeforeKey'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Fields'
+        - $ref: '#/components/parameters/Filter'
+        - $ref: '#/components/parameters/Include'
+      security:
+        - OAuth2: [read:inventory]
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestIdResponse'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Vary:
+              $ref: '#/components/headers/Vary'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListEnvelope'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      summary: Create a new product
+      operationId: createProduct
+      tags:
+        - products
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - $ref: '#/components/parameters/BranchHeader'
+        - $ref: '#/components/parameters/RequestIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      security:
+        - OAuth2: [write:inventory]
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductCreateRequest'
+      responses:
+        '201':
+          description: Created
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestIdResponse'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductEnvelope'
+        '202':
+          $ref: '#/components/responses/AcceptedAsync'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+components:
+  parameters:
+    OrganizationHeader:
+      name: X-Organization-ID
+      in: header
+      required: true
+      schema:
+        oneOf:
+          - type: string
+            pattern: '^[0-9]+$'
+            description: BIGINT organization ID
+          - type: string
+            format: uuid
+            description: UUID organization ID
+      description: Organization identifier (BIGINT or UUID)
+    BranchHeader:
+      name: X-Branch-ID
+      in: header
+      required: false
+      schema:
+        oneOf:
+          - type: string
+            pattern: '^[0-9]+$'
+          - type: string
+            format: uuid
+      description: Branch identifier for sub-organization filtering
+    RequestIdHeader:
+      name: X-Request-ID
+      in: header
+      schema:
+        type: string
+        format: uuid
+      description: Unique request identifier for tracing
+    AcceptLanguageHeader:
+      name: Accept-Language
+      in: header
+      schema:
+        type: string
+        default: en-US
+      description: Preferred language for response
+    IdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 64
+      description: Idempotency key for safe retries (TTL 24 hours)
+    AfterKey:
+      name: after_key
+      in: query
+      schema:
+        type: string
+      description: Key-set pagination cursor (product_id for next page)
+    BeforeKey:
+      name: before_key
+      in: query
+      schema:
+        type: string
+      description: Key-set pagination cursor (product_id for previous page)
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Fields:
+      name: fields
+      in: query
+      schema:
+        type: string
+      description: Sparse fieldsets (comma-separated)
+    Filter:
+      name: filter
+      in: query
+      style: deepObject
+      explode: true
+      schema:
+        type: object
+      description: Filter parameters in deepObject style
+    Include:
+      name: include
+      in: query
+      schema:
+        type: string
+      description: Related resources to include (comma-separated)
+  headers:
+    RequestIdResponse:
+      schema:
+        type: string
+        format: uuid
+    RateLimitLimit:
+      schema:
+        type: integer
+      description: Request limit per window
+    RateLimitRemaining:
+      schema:
+        type: integer
+      description: Remaining requests in window
+    RateLimitReset:
+      schema:
+        type: integer
+      description: Unix timestamp when window resets
+    ETag:
+      schema:
+        type: string
+      description: Entity tag for caching
+    Vary:
+      schema:
+        type: string
+        default: Accept-Language, X-Organization-ID
+  schemas:
+    ProductListEnvelope:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+        - _links
+      properties:
+        success:
+          type: boolean
+          default: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+        _links:
+          $ref: '#/components/schemas/PaginationLinks'
+    ProductEnvelope:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+        - _links
+      properties:
+        success:
+          type: boolean
+          default: true
+        data:
+          $ref: '#/components/schemas/Product'
+        meta:
+          $ref: '#/components/schemas/ResourceMeta'
+        _links:
+          $ref: '#/components/schemas/ResourceLinks'
+    Product:
+      type: object
+      required:
+        - product_id
+        - organization_id
+        - sku
+        - name
+        - status
+        - created_at
+        - updated_at
+        - version
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+        branch_id:
+          type: string
+          nullable: true
+        sku:
+          type: string
+          maxLength: 100
+        name:
+          type: string
+          maxLength: 255
+        status:
+          type: string
+          enum: [active, inactive, discontinued]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          description: Optimistic locking version
+    ProductCreateRequest:
+      type: object
+      required:
+        - sku
+        - name
+      properties:
+        sku:
+          type: string
+          maxLength: 100
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+    PaginationMeta:
+      type: object
+      required:
+        - total_count
+        - page_size
+        - has_next
+        - has_previous
+      properties:
+        total_count:
+          type: integer
+        page_size:
+          type: integer
+        has_next:
+          type: boolean
+        has_previous:
+          type: boolean
+        after_key:
+          type: string
+        before_key:
+          type: string
+    ResourceMeta:
+      type: object
+      required:
+        - version
+        - created_at
+        - updated_at
+      properties:
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PaginationLinks:
+      type: object
+      required:
+        - self
+      properties:
+        self:
+          $ref: '#/components/schemas/Link'
+        next:
+          $ref: '#/components/schemas/Link'
+        prev:
+          $ref: '#/components/schemas/Link'
+        first:
+          $ref: '#/components/schemas/Link'
+        last:
+          $ref: '#/components/schemas/Link'
+    ResourceLinks:
+      type: object
+      required:
+        - self
+      properties:
+        self:
+          $ref: '#/components/schemas/Link'
+        update:
+          $ref: '#/components/schemas/Link'
+        delete:
+          $ref: '#/components/schemas/Link'
+    Link:
+      type: object
+      required:
+        - href
+        - method
+      properties:
+        href:
+          type: string
+          format: uri
+        method:
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE]
+    ProblemDetail:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - detail
+        - instance
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              code:
+                type: string
+              message:
+                type: string
+    AsyncJobResponse:
+      type: object
+      required:
+        - job_id
+        - status
+        - created_at
+        - _links
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        created_at:
+          type: string
+          format: date-time
+        _links:
+          type: object
+          properties:
+            status:
+              $ref: '#/components/schemas/Link'
+  responses:
+    NotModified:
+      description: Not Modified (cached response valid)
+    BadRequest:
+      description: Bad Request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Unauthorized:
+      description: Unauthorized
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            default: Bearer realm="api"
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Forbidden:
+      description: Forbidden
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Conflict:
+      description: Conflict (business rule violation)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnsupportedMediaType:
+      description: Unsupported Media Type
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnprocessableEntity:
+      description: Unprocessable Entity (validation failed)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    TooManyRequests:
+      description: Too Many Requests
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/RateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimitRemaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/RateLimitReset'
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    ServiceUnavailable:
+      description: Service Unavailable
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    AcceptedAsync:
+      description: Accepted for async processing
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestIdResponse'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/RateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimitRemaining'
+        Location:
+          schema:
+            type: string
+            format: uri
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AsyncJobResponse'
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.smackdab.com/oauth/authorize
+          tokenUrl: https://auth.smackdab.com/oauth/token
+          scopes:
+            read:inventory: Read inventory data
+            write:inventory: Write inventory data
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Only for webhook callbacks and service-to-service
+security:
+  - OAuth2: []
+  - BearerAuth: []
+x-webhooks:
+  productCreated:
+    post:
+      summary: Product created event
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: X-Webhook-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          description: HMAC-SHA256 signature
+        - name: X-Webhook-Timestamp
+          in: header
+          required: true
+          schema:
+            type: integer
+          description: Unix timestamp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductEnvelope'
+      responses:
+        '200':
+          description: Webhook processed

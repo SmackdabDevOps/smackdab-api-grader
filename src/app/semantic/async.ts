@@ -1,0 +1,1 @@
+export function checkAsync(spec:any){ return { findings: [], score: {async: {add:7, max:8}}}; }

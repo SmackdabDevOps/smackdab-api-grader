@@ -1,0 +1,14 @@
+openapi: 3.0.0
+info:
+  title: Bad API
+  version: 1.0.0
+paths:
+  /inventory/products:
+    get:
+      parameters:
+        - in: query
+          name: offset
+          schema: { type: integer }
+      responses:
+        '200':
+          description: ok

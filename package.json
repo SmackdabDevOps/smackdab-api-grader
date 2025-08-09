@@ -1,0 +1,43 @@
+{
+  "name": "smackdab-api-grader-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Smackdab API Contract Grader — MCP server",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "dev": "tsx src/mcp/server.ts",
+    "dev:local": "tsx src/mcp/server.ts",
+    "dev:sse": "tsx watch src/mcp/server-sse.ts",
+    "start": "NODE_ENV=production tsx src/mcp/server-sse.ts",
+    "migrate": "tsx src/mcp/persistence/migrate.ts",
+    "generate-key": "tsx src/mcp/utils/generate-key.ts",
+    "test": "echo 'No tests for internal tool'"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.1.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/pg": "^8.15.5",
+    "ajv": "^8.12.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "js-yaml": "^4.1.0",
+    "minimatch": "^9.0.3",
+    "pg": "^8.16.3",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
+    "yaml": "^2.5.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "tsx": "^4.7.0",
+    "typescript": "^5.5.4"
+  }
+}

@@ -1,0 +1,56 @@
+openapi: 3.0.3
+info:
+  title: Smackdab Inventory - Products API
+  version: 2.0.0
+paths:
+  /api/v2/inventory/products:
+    get:
+      parameters:
+        - $ref: '#/components/parameters/OrganizationHeader'
+        - $ref: '#/components/parameters/BranchHeader'
+        - $ref: '#/components/parameters/AfterKey'
+        - $ref: '#/components/parameters/BeforeKey'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: ok
+components:
+  parameters:
+    OrganizationHeader:
+      name: X-Organization-ID
+      in: header
+      required: true
+      schema: { type: string }
+    BranchHeader:
+      name: X-Branch-ID
+      in: header
+      required: false
+      schema: { type: string }
+    AfterKey:
+      name: after_key
+      in: query
+      schema: { type: string }
+    BeforeKey:
+      name: before_key
+      in: query
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer }
+    Sort:
+      name: sort
+      in: query
+      schema: { type: string }
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.smackdab.com/oauth/authorize
+          tokenUrl: https://auth.smackdab.com/oauth/token
+          scopes: {}
+    BearerAuth:
+      type: http
+      scheme: bearer

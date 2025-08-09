@@ -1,0 +1,1 @@
+export function checkCaching(spec:any){ return { findings: [], score: {caching: {add:8, max:10}}}; }

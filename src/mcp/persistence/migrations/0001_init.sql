@@ -1,0 +1,1 @@
+-- See inline migration in db.ts; replace with real DDL later.
