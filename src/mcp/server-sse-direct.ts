@@ -23,6 +23,21 @@ app.get('/health', express.json(), (req, res) => {
   res.json({ status: 'healthy', version: '1.2.0' });
 });
 
+// Debug endpoint to check environment variables (remove in production)
+app.get('/debug/env', (req, res) => {
+  const envVars = Object.keys(process.env)
+    .filter(key => key.includes('API') || key === 'NODE_ENV')
+    .reduce((obj, key) => {
+      obj[key] = key.includes('API') ? '***' + process.env[key]?.substring(0, 10) + '...' : process.env[key];
+      return obj;
+    }, {} as any);
+  res.json({
+    NODE_ENV: process.env.NODE_ENV,
+    API_related_vars: envVars,
+    total_env_vars: Object.keys(process.env).length
+  });
+});
+
 // Direct SSE endpoint for MCP (Qodo-compatible)
 app.post('/sse', authenticateRequest, async (req, res) => {
   // Set SSE headers
