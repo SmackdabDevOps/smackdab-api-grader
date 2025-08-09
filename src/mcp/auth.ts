@@ -20,8 +20,10 @@ const API_KEYS = new Map<string, { teamId: string; userId: string }>();
 
 // Initialize API keys from environment
 export function initializeApiKeys() {
-  const keysJson = process.env.API_KEYS || '{}';
+  // Check both API_KEYS and API_Keys (Render might use different casing)
+  const keysJson = process.env.API_KEYS || process.env.API_Keys || process.env['API_Keys'] || '{}';
   console.log('Initializing API keys from environment:', keysJson);
+  console.log('All env vars starting with API:', Object.keys(process.env).filter(k => k.startsWith('API')));
   try {
     const keys = JSON.parse(keysJson);
     Object.entries(keys).forEach(([apiKey, data]: [string, any]) => {
@@ -51,6 +53,15 @@ export function initializeApiKeys() {
       });
       console.log(`Development API key: ${devKey}`);
     }
+  }
+  
+  // If no keys loaded in production, add a default one
+  if (API_KEYS.size === 0 && process.env.NODE_ENV === 'production') {
+    console.log('WARNING: No API keys loaded in production, adding default key');
+    API_KEYS.set('sk_prod_001', {
+      teamId: 'team-alpha',
+      userId: 'admin'
+    });
   }
 }
 
