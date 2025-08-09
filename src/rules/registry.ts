@@ -39,8 +39,51 @@ export interface Rule {
   profile?: 'all' | 'public' | 'internal' | 'prototype';
 }
 
+// Helper function to get all parameters for an operation (including path-level)
+function getAllParameters(spec: any, path: string, operation: any): any[] {
+  const pathItem = spec.paths?.[path];
+  const pathParams = pathItem?.parameters || [];
+  const opParams = operation?.parameters || [];
+  
+  // Merge path-level and operation-level parameters
+  // Operation-level parameters override path-level if same name
+  const merged = [...pathParams];
+  for (const opParam of opParams) {
+    const exists = merged.find(p => 
+      (p.name && opParam.name && p.name === opParam.name) ||
+      (p.$ref && opParam.$ref && p.$ref === opParam.$ref)
+    );
+    if (!exists) {
+      merged.push(opParam);
+    }
+  }
+  return merged;
+}
+
+// Helper function to resolve any $ref reference  
+function resolveRef(spec: any, ref: string | undefined): any {
+  if (!ref || !ref.startsWith('#/')) return null;
+  const path = ref.replace('#/', '').split('/');
+  let result = spec;
+  for (const segment of path) {
+    result = result?.[segment];
+  }
+  return result;
+}
+
+// Helper function to resolve a parameter reference
+function resolveParameterRef(spec: any, ref: string): any {
+  if (!ref || !ref.startsWith('#/')) return null;
+  const path = ref.replace('#/', '').split('/');
+  let result = spec;
+  for (const segment of path) {
+    result = result?.[segment];
+  }
+  return result;
+}
+
 // Helper functions for common patterns
-function hasParameter(operation: any, paramName: string, paramIn: string = 'header'): boolean {
+function hasParameter(operation: any, paramName: string, paramIn: string = 'header', spec?: any): boolean {
   if (!operation.parameters) return false;
   
   // Check direct parameters
@@ -49,27 +92,70 @@ function hasParameter(operation: any, paramName: string, paramIn: string = 'head
   );
   if (directParam) return true;
   
-  // Check referenced parameters
-  const refParam = operation.parameters.find((p: any) => {
-    if (p.$ref && p.$ref.includes(`/${paramName}`)) return true;
-    return false;
-  });
+  // Check referenced parameters - properly resolve the reference
+  if (spec) {
+    for (const param of operation.parameters) {
+      if (param.$ref) {
+        const resolved = resolveParameterRef(spec, param.$ref);
+        if (resolved && resolved.name === paramName && resolved.in === paramIn) {
+          return true;
+        }
+      }
+    }
+  }
   
-  return !!refParam;
+  return false;
 }
 
 function getByPath(obj: any, path: string): any {
-  // Simple JSON path resolver
-  const parts = path.replace('$', '').split('.')
-    .filter(p => p)
-    .map(p => p.replace(/\[['"](.+)['"]\]/g, '.$1'));
+  // Improved JSON path resolver
+  // Handle paths like: $.paths['/api/v2/users'].post
+  const cleanPath = path.replace(/^\$\.?/, '');
   
-  let current = obj;
-  for (const part of parts) {
-    if (current == null) return undefined;
-    current = current[part];
+  // Parse path segments, handling bracket notation
+  const segments: string[] = [];
+  let current = '';
+  let inBracket = false;
+  
+  for (let i = 0; i < cleanPath.length; i++) {
+    const char = cleanPath[i];
+    
+    if (char === '[') {
+      if (current) {
+        segments.push(current);
+        current = '';
+      }
+      inBracket = true;
+    } else if (char === ']') {
+      if (inBracket && current) {
+        // Remove quotes if present
+        const cleaned = current.replace(/^['"]|['"]$/g, '');
+        segments.push(cleaned);
+        current = '';
+      }
+      inBracket = false;
+    } else if (char === '.' && !inBracket) {
+      if (current) {
+        segments.push(current);
+        current = '';
+      }
+    } else {
+      current += char;
+    }
   }
-  return current;
+  
+  if (current) {
+    segments.push(current);
+  }
+  
+  // Navigate the object
+  let result = obj;
+  for (const segment of segments) {
+    if (result == null) return undefined;
+    result = result[segment];
+  }
+  
+  return result;
 }
 
 // ============================================================================
@@ -144,7 +230,7 @@ export const RULE_MULTI_TENANT_WRITE: Rule = {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
       for (const method of ['post', 'put', 'patch', 'delete']) {
-        if (pathItem[method as keyof typeof pathItem]) {
+        if ((pathItem as any)[method]) {
           targets.push({
             type: 'operation',
             location: `$.paths['${path}'].${method}`,
@@ -162,7 +248,21 @@ export const RULE_MULTI_TENANT_WRITE: Rule = {
     const operation = getByPath(spec, target.location);
     if (!operation) return { passed: false, message: 'Operation not found' };
     
-    const hasOrgHeader = hasParameter(operation, 'X-Organization-ID', 'header');
+    // Get all parameters including path-level
+    const allParams = getAllParameters(spec, target.path!, operation);
+    
+    // Check for X-Organization-ID - properly resolve refs
+    const hasOrgHeader = allParams.some((p: any) => {
+      if (p.name === 'X-Organization-ID' && p.in === 'header') {
+        return true;
+      }
+      if (p.$ref) {
+        const resolved = resolveParameterRef(spec, p.$ref);
+        return resolved && resolved.name === 'X-Organization-ID' && resolved.in === 'header';
+      }
+      return false;
+    });
+    
     return {
       passed: hasOrgHeader,
       message: hasOrgHeader ? undefined : 'Missing X-Organization-ID header',
@@ -201,7 +301,7 @@ export const RULE_CRUD_OPERATIONS: Rule = {
       }
       
       for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
-        if (pathItem[method as keyof typeof pathItem]) {
+        if ((pathItem as any)[method]) {
           resources.get(resource)!.add(method);
         }
       }
@@ -254,9 +354,9 @@ export const RULE_ERROR_RESPONSES: Rule = {
   detect: (spec) => {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
-      for (const method of Object.keys(pathItem)) {
+      for (const method of Object.keys(pathItem as any)) {
         if (['get', 'post', 'put', 'patch', 'delete'].includes(method)) {
-          const operation = pathItem[method as keyof typeof pathItem];
+          const operation = (pathItem as any)[method];
           if (operation?.responses) {
             targets.push({
               type: 'operation',
@@ -273,21 +373,48 @@ export const RULE_ERROR_RESPONSES: Rule = {
   },
   
   validate: (target, spec) => {
-    const responses = getByPath(spec, target.location);
+    const responses = getByPath(spec, target.location) as any;
     if (!responses) return { passed: false, message: 'No responses defined' };
     
     const errorCodes = ['400', '401', '403', '404', '409', '500'];
     const hasErrors = errorCodes.filter(code => responses[code]).length;
-    const hasProblemJson = Object.values(responses).some((r: any) => 
-      r.content?.['application/problem+json']
-    );
+    
+    // Check for structured error responses (either problem+json OR JSON with error structure)
+    const hasStructuredErrors = Object.entries(responses).some(([code, response]: [string, any]) => {
+      if (!['400', '401', '403', '404', '409', '500'].includes(code)) return false;
+      
+      // Resolve response if it's a $ref
+      const resolvedResponse = response.$ref 
+        ? resolveRef(spec, response.$ref) 
+        : response;
+      
+      if (!resolvedResponse) return false;
+      
+      // Check for problem+json
+      if (resolvedResponse.content?.['application/problem+json']) return true;
+      
+      // Check for JSON with error structure (envelope pattern)
+      const jsonContent = resolvedResponse.content?.['application/json'];
+      if (jsonContent?.schema) {
+        const schema = resolveRef(spec, jsonContent.schema.$ref) || jsonContent.schema;
+        // Check if it has error-like properties
+        const props = schema?.properties || {};
+        const hasErrorStructure = 
+          (props.success !== undefined && props.error !== undefined) ||
+          (props.error !== undefined && props.message !== undefined) ||
+          (props.type !== undefined && props.title !== undefined) || // RFC 7807-like
+          (props.code !== undefined && props.message !== undefined);
+        return hasErrorStructure;
+      }
+      return false;
+    });
     
     const coverage = hasErrors / errorCodes.length;
     return {
-      passed: coverage > 0.5 && hasProblemJson,
+      passed: coverage > 0.5 && hasStructuredErrors,
       message: coverage < 0.5 ? 'Missing common error responses' : 
-               !hasProblemJson ? 'Not using application/problem+json' : undefined,
-      fixHint: 'Add error responses with problem+json format',
+               !hasStructuredErrors ? 'Error responses lack structured format' : undefined,
+      fixHint: 'Add error responses (400,401,403,404,409,500) with structured error format',
       confidence: 0.85
     };
   },
@@ -306,9 +433,9 @@ export const RULE_RESPONSE_ENVELOPE: Rule = {
   detect: (spec) => {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
-      for (const method of Object.keys(pathItem)) {
+      for (const method of Object.keys(pathItem as any)) {
         if (['get', 'post', 'put', 'patch'].includes(method)) {
-          const operation = pathItem[method as keyof typeof pathItem];
+          const operation = (pathItem as any)[method];
           if (operation?.responses?.['200'] || operation?.responses?.['201']) {
             targets.push({
               type: 'response',
@@ -331,13 +458,54 @@ export const RULE_RESPONSE_ENVELOPE: Rule = {
     if (!successResponse) return { passed: true }; // No success response to check
     
     const schema = successResponse.content?.['application/json']?.schema;
-    const hasEnvelope = schema?.$ref?.includes('ResponseEnvelope') || 
-                       schema?.allOf?.some((s: any) => s.$ref?.includes('ResponseEnvelope'));
+    if (!schema) return { passed: false, message: 'No JSON schema defined for success response' };
+    
+    // Check if schema has envelope structure (regardless of name)
+    let hasEnvelope = false;
+    let schemaToCheck = null;
+    
+    // If it's a reference, resolve it
+    if (schema.$ref) {
+      const schemaName = schema.$ref.split('/').pop();
+      schemaToCheck = spec.components?.schemas?.[schemaName];
+    } else {
+      schemaToCheck = schema;
+    }
+    
+    if (schemaToCheck) {
+      // An envelope should have at least:
+      // 1. A wrapper field for the actual data (commonly: data, result, payload, items, content)
+      // 2. Optional metadata (meta, metadata, _meta)
+      // 3. Optional status/success indicator (success, status, ok)
+      // 4. Optional links (_links, links)
+      
+      const props = schemaToCheck.properties || {};
+      const propNames = Object.keys(props);
+      
+      // Check for data wrapper field
+      const hasDataField = propNames.some(name => 
+        ['data', 'result', 'results', 'payload', 'items', 'content', 'body'].includes(name.toLowerCase())
+      );
+      
+      // Check for metadata or status fields (at least one of these makes it an envelope)
+      const hasMetaField = propNames.some(name => 
+        ['meta', 'metadata', '_meta', 'pagination', 'page_info'].includes(name.toLowerCase())
+      );
+      const hasStatusField = propNames.some(name => 
+        ['success', 'status', 'ok', 'error', 'errors'].includes(name.toLowerCase())
+      );
+      const hasLinksField = propNames.some(name => 
+        ['_links', 'links', 'href'].includes(name.toLowerCase())
+      );
+      
+      // It's an envelope if it has a data field AND at least one other envelope field
+      hasEnvelope = hasDataField && (hasMetaField || hasStatusField || hasLinksField);
+    }
     
     return {
       passed: hasEnvelope,
-      message: hasEnvelope ? undefined : 'Success response not using ResponseEnvelope',
-      fixHint: 'Wrap response in ResponseEnvelope schema',
+      message: hasEnvelope ? undefined : 'Success response not using response envelope pattern',
+      fixHint: 'Wrap response in an envelope schema with data field and meta/status/links fields',
       confidence: 0.9
     };
   },
@@ -357,7 +525,7 @@ export const RULE_STATUS_CODES: Rule = {
   detect: (spec) => {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
-      for (const method of Object.keys(pathItem)) {
+      for (const method of Object.keys(pathItem as any)) {
         if (['get', 'post', 'put', 'patch', 'delete'].includes(method)) {
           targets.push({
             type: 'operation',
@@ -416,7 +584,7 @@ export const RULE_MULTI_TENANT_READ: Rule = {
   detect: (spec) => {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
-      if (pathItem.get) {
+      if ((pathItem as any).get) {
         targets.push({
           type: 'operation',
           location: `$.paths['${path}'].get`,
@@ -431,7 +599,20 @@ export const RULE_MULTI_TENANT_READ: Rule = {
   
   validate: (target, spec) => {
     const operation = getByPath(spec, target.location);
-    const hasOrgHeader = hasParameter(operation, 'X-Organization-ID', 'header');
+    // Get all parameters including path-level
+    const allParams = getAllParameters(spec, target.path!, operation);
+    
+    // Check for X-Organization-ID in merged parameters - properly resolve refs
+    const hasOrgHeader = allParams.some((p: any) => {
+      if (p.name === 'X-Organization-ID' && p.in === 'header') {
+        return true;
+      }
+      if (p.$ref) {
+        const resolved = resolveParameterRef(spec, p.$ref);
+        return resolved && resolved.name === 'X-Organization-ID' && resolved.in === 'header';
+      }
+      return false;
+    });
     
     return {
       passed: hasOrgHeader,
@@ -454,9 +635,22 @@ export const RULE_BRANCH_HEADERS: Rule = {
   rationale: 'Enables branch-level data isolation',
   
   detect: (spec) => {
+    // Only apply this rule if the API appears to be multi-tenant/multi-branch
+    // Check if there's already an Organization header or tenant pattern
+    const hasOrgHeader = spec.components?.parameters && 
+      Object.keys(spec.components.parameters).some(p => 
+        p.toLowerCase().includes('organization') || 
+        p.toLowerCase().includes('tenant')
+      );
+    
+    // If not a multi-tenant API, this rule is not applicable
+    if (!hasOrgHeader) {
+      return [];  // Rule not applicable
+    }
+    
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
-      for (const method of Object.keys(pathItem)) {
+      for (const method of Object.keys(pathItem as any)) {
         if (['get', 'post', 'put', 'patch', 'delete'].includes(method)) {
           targets.push({
             type: 'operation',
@@ -499,7 +693,7 @@ export const RULE_AUTHORIZATION: Rule = {
   detect: (spec) => {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
-      for (const method of Object.keys(pathItem)) {
+      for (const method of Object.keys(pathItem as any)) {
         if (['post', 'put', 'patch', 'delete'].includes(method)) {
           targets.push({
             type: 'operation',
@@ -541,7 +735,7 @@ export const RULE_INPUT_VALIDATION: Rule = {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
       for (const method of ['post', 'put', 'patch']) {
-        if (pathItem[method as keyof typeof pathItem]) {
+        if ((pathItem as any)[method]) {
           targets.push({
             type: 'operation',
             location: `$.paths['${path}'].${method}`,
@@ -594,7 +788,7 @@ export const RULE_PAGINATION: Rule = {
   detect: (spec) => {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
-      if (pathItem.get && path.match(/(?<!{[^}]*)\/$|s$/)) {  // List endpoints
+      if ((pathItem as any).get && path.match(/(?<!{[^}]*)\/$|s$/)) {  // List endpoints
         targets.push({
           type: 'operation',
           location: `$.paths['${path}'].get`,
@@ -609,11 +803,28 @@ export const RULE_PAGINATION: Rule = {
   
   validate: (target, spec) => {
     const operation = getByPath(spec, target.location);
-    const params = operation?.parameters || [];
+    // Get all parameters including path-level
+    const params = getAllParameters(spec, target.path!, operation);
     
-    const hasAfterKey = params.some((p: any) => p.name === 'AfterKey' && p.in === 'query');
-    const hasBeforeKey = params.some((p: any) => p.name === 'BeforeKey' && p.in === 'query');
-    const hasLimit = params.some((p: any) => p.name === 'Limit' && p.in === 'query');
+    // Check for key-set pagination parameters - resolve refs properly
+    const checkParam = (names: string[]) => {
+      return params.some((p: any) => {
+        if (p.in === 'query' && names.some(name => p.name?.toLowerCase() === name.toLowerCase())) {
+          return true;
+        }
+        if (p.$ref) {
+          const resolved = resolveParameterRef(spec, p.$ref);
+          return resolved && resolved.in === 'query' && 
+                 names.some(name => resolved.name?.toLowerCase() === name.toLowerCase());
+        }
+        return false;
+      });
+    };
+    
+    // Check for standard key-set pagination patterns
+    const hasAfterKey = checkParam(['AfterKey', 'after_key', 'after', 'cursor', 'next_cursor']);
+    const hasBeforeKey = checkParam(['BeforeKey', 'before_key', 'before', 'prev_cursor']);
+    const hasLimit = checkParam(['Limit', 'limit', 'page_size', 'per_page', 'count']);
     
     // Also check for bad pagination patterns
     const hasOffset = params.some((p: any) => 
@@ -645,7 +856,7 @@ export const RULE_CACHING_HEADERS: Rule = {
   detect: (spec) => {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
-      if (pathItem.get) {
+      if ((pathItem as any).get) {
         targets.push({
           type: 'operation',
           location: `$.paths['${path}'].get`,
@@ -694,7 +905,7 @@ export const RULE_ASYNC_PATTERNS: Rule = {
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
       if (path.includes('import') || path.includes('export') || path.includes('batch')) {
         for (const method of ['post', 'put']) {
-          if (pathItem[method as keyof typeof pathItem]) {
+          if ((pathItem as any)[method]) {
             targets.push({
               type: 'operation',
               location: `$.paths['${path}'].${method}`,
@@ -740,7 +951,7 @@ export const RULE_RATE_LIMITING: Rule = {
     // Check a few key operations
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
       for (const method of ['post', 'put', 'delete']) {
-        if (pathItem[method as keyof typeof pathItem]) {
+        if ((pathItem as any)[method]) {
           targets.push({
             type: 'operation',
             location: `$.paths['${path}'].${method}`,
@@ -837,7 +1048,7 @@ export const RULE_DOCUMENTATION: Rule = {
   detect: (spec) => {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
-      for (const method of Object.keys(pathItem)) {
+      for (const method of Object.keys(pathItem as any)) {
         if (['get', 'post', 'put', 'patch', 'delete'].includes(method)) {
           targets.push({
             type: 'operation',
@@ -914,7 +1125,7 @@ export const RULE_EXAMPLES: Rule = {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
       for (const method of ['post', 'put']) {
-        if (pathItem[method as keyof typeof pathItem]) {
+        if ((pathItem as any)[method]) {
           targets.push({
             type: 'operation',
             location: `$.paths['${path}'].${method}`,
@@ -961,7 +1172,7 @@ export const RULE_COMPREHENSIVE_EXAMPLES: Rule = {
   detect: (spec) => {
     const targets: Target[] = [];
     for (const [path, pathItem] of Object.entries(spec.paths || {})) {
-      for (const method of Object.keys(pathItem)) {
+      for (const method of Object.keys(pathItem as any)) {
         if (['get', 'post', 'put', 'patch', 'delete'].includes(method)) {
           targets.push({
             type: 'operation',
@@ -977,17 +1188,41 @@ export const RULE_COMPREHENSIVE_EXAMPLES: Rule = {
   },
   
   validate: (target, spec) => {
-    const operation = getByPath(spec, target.location);
+    const operation = getByPath(spec, target.location) as any;
+    if (!operation) return { passed: false, message: 'Operation not found' };
     
-    // Check for examples in request and responses
-    const requestExample = operation?.requestBody?.content?.['application/json']?.example;
-    const responseExample = operation?.responses?.['200']?.content?.['application/json']?.example ||
-                          operation?.responses?.['201']?.content?.['application/json']?.example;
+    // Check for examples in request (both example and examples)
+    const requestJson = operation?.requestBody?.content?.['application/json'];
+    const hasRequestExample = !!(
+      requestJson?.example || 
+      requestJson?.examples ||
+      requestJson?.schema?.example
+    );
+    
+    // Check for examples in responses (both example and examples)
+    let hasResponseExample = false;
+    for (const [code, response] of Object.entries(operation?.responses || {})) {
+      const responseJson = (response as any)?.content?.['application/json'];
+      if (responseJson?.example || responseJson?.examples || responseJson?.schema?.example) {
+        hasResponseExample = true;
+        break;
+      }
+    }
+    
+    // For GET/DELETE, only response examples needed
+    // For POST/PUT/PATCH, both request and response examples preferred
+    const needsRequestExample = ['post', 'put', 'patch'].includes(target.method || '');
+    
+    const passed = needsRequestExample 
+      ? (hasRequestExample && hasResponseExample)
+      : hasResponseExample;
     
     return {
-      passed: !!(requestExample || responseExample),
-      message: 'No examples provided',
-      fixHint: 'Add comprehensive examples',
+      passed,
+      message: !hasResponseExample ? 'No response examples provided' :
+               !hasRequestExample && needsRequestExample ? 'No request examples provided' :
+               'No examples provided',
+      fixHint: 'Add examples for requests and responses',
       confidence: 0.6
     };
   },
@@ -1010,15 +1245,33 @@ export const RULE_PERFORMANCE_HINTS: Rule = {
   }],
   
   validate: (target, spec) => {
+    // Check multiple places for performance information
     const description = spec.info?.description || '';
-    const hasPerfInfo = description.includes('performance') || 
-                       description.includes('SLA') ||
-                       description.includes('response time');
+    const hasPerfInDescription = description.toLowerCase().includes('performance') || 
+                                description.toLowerCase().includes('sla') ||
+                                description.toLowerCase().includes('response time');
+    
+    // Check for x-performance extension
+    const hasPerfExtension = !!(spec['x-performance'] || spec.info?.['x-performance']);
+    
+    // Check for performance-related tags
+    const hasPerfTags = spec.tags?.some((tag: any) => 
+      tag.name?.toLowerCase().includes('performance') ||
+      tag.description?.toLowerCase().includes('performance')
+    );
+    
+    // Check for performance documentation in servers
+    const hasPerfInServers = spec.servers?.some((server: any) => 
+      server.description?.toLowerCase().includes('performance') ||
+      server['x-performance']
+    );
+    
+    const hasPerfInfo = hasPerfInDescription || hasPerfExtension || hasPerfTags || hasPerfInServers;
     
     return {
       passed: hasPerfInfo,
       message: 'No performance information provided',
-      fixHint: 'Document SLAs and performance expectations',
+      fixHint: 'Document SLAs and performance expectations in description or x-performance',
       confidence: 0.5
     };
   },
@@ -1046,16 +1299,38 @@ export const RULE_ADVANCED_PATTERNS: Rule = {
     const hasCallbacks = Object.values(spec.paths || {}).some((p: any) => 
       Object.values(p).some((op: any) => op.callbacks)
     );
-    const hasLinks = Object.values(spec.paths || {}).some((p: any) =>
+    
+    // Check for links in responses (OpenAPI links)
+    const hasOpenAPILinks = Object.values(spec.paths || {}).some((p: any) =>
       Object.values(p).some((op: any) => 
         op.responses && Object.values(op.responses).some((r: any) => r.links)
       )
     );
     
+    // Check for HATEOAS links in response schemas (_links property)
+    const hasHATEOASLinks = Object.values(spec.components?.schemas || {}).some((schema: any) => 
+      schema.properties?._links || schema.properties?.links
+    );
+    
+    // Check for async patterns (202 responses with Location headers)
+    const hasAsyncPatterns = Object.values(spec.paths || {}).some((p: any) =>
+      Object.values(p).some((op: any) => 
+        op.responses?.['202']
+      )
+    );
+    
+    // Check for event-driven patterns
+    const hasEventDriven = spec['x-event-driven'] || spec.info?.['x-event-driven'] || hasWebhooks;
+    
+    const patterns = [hasWebhooks, hasCallbacks, hasOpenAPILinks, hasHATEOASLinks, hasAsyncPatterns, hasEventDriven];
+    const patternCount = patterns.filter(p => p).length;
+    
     return {
-      passed: hasWebhooks || hasCallbacks || hasLinks,
-      message: 'No advanced patterns used',
-      fixHint: 'Consider webhooks, callbacks, or links',
+      passed: patternCount >= 2,  // Need at least 2 advanced patterns for excellence
+      message: patternCount === 0 ? 'No advanced patterns used' :
+               patternCount === 1 ? 'Only one advanced pattern found' :
+               undefined,
+      fixHint: 'Implement webhooks, HATEOAS links, async patterns, or callbacks',
       confidence: 0.4
     };
   },

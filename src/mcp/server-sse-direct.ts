@@ -1,9 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import { z } from 'zod';
-import { authenticateRequest } from './auth.js';
+import { authenticateRequest, initializeApiKeys } from './auth.js';
 import * as pipeline from '../app/pipeline.js';
 import fetch from 'node-fetch';
+
+// Initialize API keys
+initializeApiKeys();
 
 const app = express();
 
@@ -14,10 +17,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
-app.use(express.json({ limit: '10mb' }));
 
-// Health check endpoint
-app.get('/health', (req, res) => {
+// Health check endpoint (with JSON parsing for this route only)
+app.get('/health', express.json(), (req, res) => {
   res.json({ status: 'healthy', version: '1.2.0' });
 });
 
@@ -90,7 +92,7 @@ app.post('/sse', authenticateRequest, async (req, res) => {
         yamlContent = Buffer.from(args.content, 'base64').toString('utf-8');
       }
 
-      const result = await pipeline.grade(yamlContent, args.templatePath);
+      const result = await pipeline.gradeInline({ content: yamlContent, templatePath: args.templatePath }, { progress: () => {} });
       
       return {
         content: [{
@@ -110,6 +112,7 @@ app.post('/sse', authenticateRequest, async (req, res) => {
         isError: true
       };
     }
+  }
   };
 
   // Handle incoming MCP messages

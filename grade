@@ -1,0 +1,43 @@
+#!/bin/bash
+# API Grader Quick Command
+# Usage: ./grade [api-file] [--legacy]
+
+API_FILE="${1:-/Users/brooksswift/Desktop/Smackdab/mock-product-api.yaml}"
+LEGACY_FLAG="${2}"
+
+# Colors for output
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}🎯 Smackdab API Grader v2.0${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+if [ "$LEGACY_FLAG" == "--legacy" ]; then
+    echo -e "${YELLOW}⚠️  Running in LEGACY mode (harsh binary scoring)${NC}"
+else
+    echo -e "${GREEN}✅ Using NEW coverage-based scoring (fair grading)${NC}"
+fi
+
+echo -e "📄 Grading: ${API_FILE}"
+echo ""
+
+# Make sure we're in the right directory
+cd /Users/brooksswift/Desktop/Smackdab/api-grader-mcp-starter
+
+# Compile TypeScript
+echo -e "${BLUE}Building...${NC}"
+npx tsc 2>/dev/null
+
+# Run the grader
+node test-direct.js "$API_FILE" "$LEGACY_FLAG"
+
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}💡 Tip: Add this alias to your shell:${NC}"
+echo -e "   ${YELLOW}alias grade='cd /Users/brooksswift/Desktop/Smackdab/api-grader-mcp-starter && ./grade'${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

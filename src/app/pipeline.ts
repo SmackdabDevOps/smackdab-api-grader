@@ -20,6 +20,11 @@ import { checkComprehensive } from './semantic/comprehensive.js';
 import { CHECKPOINTS } from './checkpoints.js';
 import { GraderDB } from '../mcp/persistence/db.js';
 
+// New coverage-based scoring imports
+import { checkPrerequisites, Finding as NewFinding } from '../scoring/prerequisites.js';
+import { scoreWithDependencies } from '../scoring/dependencies.js';
+import { calculateFinalGrade, generateGradeSummary } from '../scoring/finalizer.js';
+
 type Finding = { ruleId:string; message:string; severity: 'error'|'warn'|'info'; jsonPath:string; category?:string; line?:number };
 
 function letter(total:number){
@@ -34,19 +39,30 @@ function letter(total:number){
   return 'F';
 }
 
+// Generate a unique instance ID at startup
+const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
+const INSTANCE_START_TIME = new Date().toISOString();
+
 export async function version() {
+  const usesNewScoring = process.env.USE_LEGACY_SCORING !== 'true';
   return {
-    serverVersion: '1.2.0',
+    serverVersion: usesNewScoring ? '2.0.0' : '1.2.0',
+    scoringEngine: usesNewScoring ? 'coverage-based' : 'legacy',
+    instanceId: INSTANCE_ID,
+    instanceStartTime: INSTANCE_START_TIME,
     rulesetHash: 'dev-hash',
     templateVersion: '3.2.3',
     templateHash: 'dev-template',
-    toolVersions: { grader: '1.2.0' }
+    toolVersions: { 
+      grader: usesNewScoring ? '2.0.0' : '1.2.0',
+      scoringSystem: usesNewScoring ? 'coverage-based-v1' : 'legacy-binary'
+    }
   };
 }
 
 async function loadSpec(path:string){
   const raw = await fs.readFile(path,'utf8');
-  const doc = parseDocument(raw, { keepCstNodes:true, keepNodeTypes:true });
+  const doc = parseDocument(raw, { keepNodeTypes:true } as any);
   return { js: doc.toJS(), raw };
 }
 
@@ -54,12 +70,59 @@ function sha256(s:string){ return crypto.createHash('sha256').update(s).digest('
 
 export async function gradeContract(args:any, {progress}:{progress:(s:string,p:number,note?:string)=>void}){
   const templatePath = args.templatePath || '.claude/templates/MASTER_API_TEMPLATE_v3.yaml';
+  const useLegacyScoring = args.legacyMode || false;  // Backward compatibility flag
+  
   progress('template', 5);
   const template = await loadTemplate(templatePath);
 
   progress('load', 10);
   const { js: spec, raw } = await loadSpec(args.path);
   const specHash = sha256(raw.replace('\r\n','\n'));
+
+  // If using new scoring system, check prerequisites first
+  if (!useLegacyScoring) {
+    progress('prerequisites', 15);
+    const prereqResult = await checkPrerequisites(spec);
+    
+    if (!prereqResult.passed) {
+      // Prerequisites failed - return blocked score
+      progress('fail-prerequisites', 100);
+      const findings = prereqResult.failures.map(f => ({
+        ruleId: f.ruleId,
+        message: f.message,
+        severity: f.severity as 'error' | 'warn' | 'info',
+        jsonPath: f.location,
+        category: f.category,
+        line: f.line
+      }));
+      
+      const grade = {
+        total: 0,
+        letter: 'F',
+        compliancePct: 0,
+        autoFailTriggered: true,
+        criticalIssues: findings.length,
+        perCategory: {},
+        autoFailReasons: prereqResult.failures.map(f => f.message),
+        blockedByPrerequisites: true,
+        prerequisiteFailures: prereqResult.failures.length
+      };
+      
+      return {
+        grade,
+        findings,
+        checkpoints: [],
+        metadata: {
+          specHash,
+          templateHash: template.templateHash,
+          rulesetHash: template.rulesetHash,
+          templateVersion: '3.2.3',
+          toolVersions: { grader: '2.0.0' },  // New version
+          scoringEngine: 'coverage-based'
+        }
+      };
+    }
+  }
 
   progress('openapi-validate', 20);
   const oav = await validateOpenAPI(spec);
@@ -81,64 +144,150 @@ export async function gradeContract(args:any, {progress}:{progress:(s:string,p:n
   const ex = await validateExamples(spec);
   findings.push(...(ex.errors||[]).map((e:any)=>({ ruleId:'EXAMPLES', message:e.message, severity:'warn' as const, jsonPath:e.path || '$' })));
 
-  progress('semantic', 80);
-  const modules = [
-    ['comprehensive', checkComprehensive],
-    ['naming', checkNaming],
-    // Disabled redundant checkers that are already handled by comprehensive
-    // ['security', checkTenancy],  // comprehensive does this better
-    // ['http', checkHttp],
-    // ['http', checkHttpSemantics],  // has bugs with template paths
-    ['caching', checkCaching],
-    ['pagination', checkPagination],
-    ['envelope', checkEnvelope],
-    ['async', checkAsync],
-    ['webhooks', checkWebhooks],
-    ['i18n', checkI18n],
-    ['extensions', checkExtensions],
-  ] as const;
-
-  let total = 0;
-  const checkpointScores: Array<{checkpoint_id:string; category:string; max_points:number; scored_points:number}> = [];
-  let autoFailReasons: string[] = [];
-  let comprehensiveScore = 0;
-
-  for (const [category, fn] of modules){
-    const r = await fn(spec);
-    findings.push(...(r.findings||[]));
-    
-    // Special handling for comprehensive module which provides its own score
-    if (category === 'comprehensive' && r.score?.comprehensive) {
-      comprehensiveScore = r.score.comprehensive.add || 0;
-    } else {
-      // Map module outputs back to checkpoint weights where possible
-      // We mark a checkpoint as fully earned if no finding with that ruleId exists.
-      for (const cp of CHECKPOINTS.filter(c => c.category === category)) {
-        const violated = findings.some(f => f.ruleId === cp.id);
-        const scored = violated ? 0 : cp.weight;
-        checkpointScores.push({ checkpoint_id: cp.id, category: cp.category, max_points: cp.weight, scored_points: scored });
-        total += scored;
-        if (violated && cp.autoFail) autoFailReasons.push(cp.description);
-      }
-    }
-    // Respect module-provided auto-fail reasons too
-    if (r.autoFailReasons && r.autoFailReasons.length) autoFailReasons.push(...r.autoFailReasons);
-  }
+  // Branch based on scoring mode
+  let grade: any;
+  let checkpoints: any[];
   
-  // Use the comprehensive score if it's higher than the checkpoint-based score
-  // The comprehensive module does a much more thorough analysis
-  if (comprehensiveScore > total) {
-    total = comprehensiveScore;
-  }
+  if (useLegacyScoring) {
+    // Original scoring logic for backward compatibility
+    progress('semantic', 80);
+    const modules = [
+      ['comprehensive', checkComprehensive],
+      ['naming', checkNaming],
+      ['caching', checkCaching],
+      ['pagination', checkPagination],
+      ['envelope', checkEnvelope],
+      ['async', checkAsync],
+      ['webhooks', checkWebhooks],
+      ['i18n', checkI18n],
+      ['extensions', checkExtensions],
+    ] as const;
 
-  if (total > 100) total = 100;
-  const autoFail = autoFailReasons.length > 0;
-  progress('scoring', 90);
-  const grade = { total: autoFail ? Math.min(total, 59) : total, letter: autoFail ? 'F' : letter(total), compliancePct: total/100, autoFailTriggered: autoFail, criticalIssues: findings.filter(f=>f.severity==='error').length, perCategory:{} as any, autoFailReasons };
-  const checkpoints = checkpointScores;
+    let total = 0;
+    const checkpointScores: Array<{checkpoint_id:string; category:string; max_points:number; scored_points:number}> = [];
+    let autoFailReasons: string[] = [];
+    let comprehensiveScore = 0;
+
+    for (const [category, fn] of modules){
+      const r = await fn(spec);
+      findings.push(...(r.findings||[]));
+      
+      if (category === 'comprehensive' && (r.score as any)?.comprehensive) {
+        comprehensiveScore = (r.score as any).comprehensive.add || 0;
+      } else {
+        for (const cp of CHECKPOINTS.filter(c => c.category === category)) {
+          const violated = findings.some(f => f.ruleId === cp.id);
+          const scored = violated ? 0 : cp.weight;
+          checkpointScores.push({ checkpoint_id: cp.id, category: cp.category, max_points: cp.weight, scored_points: scored });
+          total += scored;
+          if (violated && cp.autoFail) autoFailReasons.push(cp.description);
+        }
+      }
+      if ((r as any).autoFailReasons && (r as any).autoFailReasons.length) autoFailReasons.push(...(r as any).autoFailReasons);
+    }
+    
+    if (comprehensiveScore > total) {
+      total = comprehensiveScore;
+    }
+
+    if (total > 100) total = 100;
+    const autoFail = autoFailReasons.length > 0;
+    progress('scoring', 90);
+    grade = { total: autoFail ? Math.min(total, 59) : total, letter: autoFail ? 'F' : letter(total), compliancePct: total/100, autoFailTriggered: autoFail, criticalIssues: findings.filter(f=>f.severity==='error').length, perCategory:{} as any, autoFailReasons };
+    checkpoints = checkpointScores;
+  } else {
+    // New coverage-based scoring system
+    progress('coverage-scoring', 80);
+    
+    // Score all rules with dependency awareness
+    const ruleScores = scoreWithDependencies(spec);
+    
+    // Calculate final grade
+    const gradeResult = calculateFinalGrade(ruleScores);
+    
+    // Convert findings to old format for compatibility
+    const newFindings = gradeResult.findings.map(f => ({
+      ruleId: f.ruleId,
+      message: f.message,
+      severity: f.severity as 'error' | 'warn' | 'info',
+      jsonPath: f.location,
+      category: f.category,
+      line: f.line
+    }));
+    
+    findings.push(...newFindings);
+    
+    // Build checkpoint scores for compatibility
+    const checkpointScores: Array<{checkpoint_id:string; category:string; max_points:number; scored_points:number}> = [];
+    for (const [ruleId, score] of ruleScores) {
+      checkpointScores.push({
+        checkpoint_id: ruleId,
+        category: score.category,
+        max_points: score.maxScore,
+        scored_points: score.score
+      });
+    }
+    
+    progress('scoring', 90);
+    
+    // Build grade object in old format
+    const perCategory: any = {};
+    for (const cat of gradeResult.breakdown) {
+      perCategory[cat.category] = {
+        earned: cat.earnedPoints,
+        max: cat.maxPoints,
+        percentage: cat.percentage
+      };
+    }
+    
+    grade = {
+      total: gradeResult.score,
+      letter: gradeResult.grade,
+      compliancePct: gradeResult.score / 100,
+      autoFailTriggered: false,  // No more binary auto-fail
+      criticalIssues: gradeResult.criticalFindings,
+      perCategory,
+      autoFailReasons: [],  // No auto-fail in new system
+      coverageBased: true,  // Flag to indicate new scoring
+      excellence: gradeResult.excellence,
+      ruleScores: Object.fromEntries(
+        Array.from(ruleScores.entries()).map(([id, score]) => [
+          id, 
+          {
+            coverage: score.coverage,
+            score: score.score,
+            maxPoints: score.maxScore,
+            applicable: score.applicable,
+            targetsChecked: score.targetsChecked,
+            targetsPassed: score.targetsPassed
+          }
+        ])
+      )  // Add detailed rule scores
+    };
+    
+    checkpoints = checkpointScores;
+  }
 
   progress('done', 100);
-  return { grade, findings: stableSort(findings), checkpoints, metadata: { specHash, templateHash: template.templateHash, rulesetHash: template.rulesetHash, templateVersion: '3.2.3', toolVersions: { grader: '1.2.0' } } };
+  // Get version info for metadata
+  const versionInfo = await version();
+  
+  return { 
+    grade, 
+    findings: stableSort(findings), 
+    checkpoints, 
+    metadata: { 
+      specHash, 
+      templateHash: template.templateHash, 
+      rulesetHash: template.rulesetHash, 
+      templateVersion: '3.2.3', 
+      toolVersions: { grader: useLegacyScoring ? '1.2.0' : '2.0.0' },
+      scoringEngine: useLegacyScoring ? 'legacy' : 'coverage-based',
+      instanceId: versionInfo.instanceId,
+      instanceStartTime: versionInfo.instanceStartTime,
+      gradedAt: new Date().toISOString()
+    } 
+  };
 }
 
 function stableSort(findings: Finding[]): Finding[] {
@@ -203,7 +352,7 @@ export async function gradeAndRecord(args:any, {progress}:{progress:(s:string,p:
 
 import { generateFixes } from './fixes/fixesEngine.js';
 import { applyPatches } from './patching/applyPatches.js';
-import { GraderDB } from '../mcp/persistence/db.js';
+// GraderDB already imported above
 import { getTopViolations } from './analytics/trends.js';
 
 export async function suggestFixes(args:any){

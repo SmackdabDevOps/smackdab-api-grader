@@ -31,8 +31,8 @@ function resolveEffectiveParams(spec: any, pathItem: any, operation: any): any[]
   
   // First add path-level params
   for (const param of pathParams) {
-    if (param.$ref) {
-      const resolved = resolveRef(spec, param.$ref);
+    if ((param as any).$ref) {
+      const resolved = resolveRef(spec, (param as any).$ref);
       if (resolved) {
         const key = `${resolved.in}:${resolved.name}`;
         paramMap.set(key, resolved);
@@ -45,8 +45,8 @@ function resolveEffectiveParams(spec: any, pathItem: any, operation: any): any[]
   
   // Then overlay operation-level params (they override path-level)
   for (const param of opParams) {
-    if (param.$ref) {
-      const resolved = resolveRef(spec, param.$ref);
+    if ((param as any).$ref) {
+      const resolved = resolveRef(spec, (param as any).$ref);
       if (resolved) {
         const key = `${resolved.in}:${resolved.name}`;
         paramMap.set(key, resolved);
@@ -185,8 +185,8 @@ export function checkComprehensive(spec: any) {
         let content: any = response;
         
         // Resolve $ref if present
-        if (response && typeof response === 'object' && response.$ref) {
-          content = resolveRef(spec, response.$ref);
+        if (response && typeof response === 'object' && (response as any).$ref) {
+          content = resolveRef(spec, (response as any).$ref);
         }
         
         const hasProblemJson = content?.content?.['application/problem+json'] || 
@@ -210,8 +210,8 @@ export function checkComprehensive(spec: any) {
           for (const [headerName, headerDef] of Object.entries(headers)) {
             if (headerName === 'WWW-Authenticate') {
               hasWwwAuth = true;
-            } else if (headerDef && typeof headerDef === 'object' && headerDef.$ref) {
-              const resolved = resolveRef(spec, headerDef.$ref);
+            } else if (headerDef && typeof headerDef === 'object' && (headerDef as any).$ref) {
+              const resolved = resolveRef(spec, (headerDef as any).$ref);
               if (resolved && headerName === 'WWW-Authenticate') {
                 hasWwwAuth = true;
               }
@@ -237,8 +237,8 @@ export function checkComprehensive(spec: any) {
           for (const [headerName, headerDef] of Object.entries(headers)) {
             if (headerName === 'Retry-After') {
               hasRetryAfter = true;
-            } else if (headerDef && typeof headerDef === 'object' && headerDef.$ref) {
-              const resolved = resolveRef(spec, headerDef.$ref);
+            } else if (headerDef && typeof headerDef === 'object' && (headerDef as any).$ref) {
+              const resolved = resolveRef(spec, (headerDef as any).$ref);
               if (resolved && headerName === 'Retry-After') {
                 hasRetryAfter = true;
               }
@@ -260,8 +260,8 @@ export function checkComprehensive(spec: any) {
       // Check 202 responses for job semantics
       if (statusCode === '202') {
         let content: any = response;
-        if (response && typeof response === 'object' && response.$ref) {
-          content = resolveRef(spec, response.$ref);
+        if (response && typeof response === 'object' && (response as any).$ref) {
+          content = resolveRef(spec, (response as any).$ref);
         }
         
         const headers = content?.headers || {};
@@ -272,8 +272,8 @@ export function checkComprehensive(spec: any) {
           if (headerName === 'Location') hasLocation = true;
           if (headerName === 'Retry-After') hasRetryAfter = true;
           
-          if (headerDef && typeof headerDef === 'object' && headerDef.$ref) {
-            const resolved = resolveRef(spec, headerDef.$ref);
+          if (headerDef && typeof headerDef === 'object' && (headerDef as any).$ref) {
+            const resolved = resolveRef(spec, (headerDef as any).$ref);
             if (resolved) {
               if (headerName === 'Location') hasLocation = true;
               if (headerName === 'Retry-After') hasRetryAfter = true;
@@ -306,8 +306,8 @@ export function checkComprehensive(spec: any) {
       // EXCEPTION: 202 Accepted and job status endpoints can return AsyncJobStatus directly
       if (status >= 200 && status < 300) {
         let content: any = response;
-        if (response && typeof response === 'object' && response.$ref) {
-          content = resolveRef(spec, response.$ref);
+        if (response && typeof response === 'object' && (response as any).$ref) {
+          content = resolveRef(spec, (response as any).$ref);
         }
         
         const jsonContent = content?.content?.['application/json'];
@@ -315,7 +315,7 @@ export function checkComprehensive(spec: any) {
         
         if (schema) {
           let schemaToCheck = schema;
-          let schemaRef = schema.$ref;
+          let schemaRef = (schema as any).$ref;
           if (schemaRef) {
             schemaToCheck = resolveRef(spec, schemaRef);
           }
@@ -549,8 +549,8 @@ export function checkComprehensive(spec: any) {
       const status = parseInt(statusCode);
       if (status >= 200 && status < 300) {
         let content: any = response;
-        if (response && typeof response === 'object' && response.$ref) {
-          content = resolveRef(spec, response.$ref);
+        if (response && typeof response === 'object' && (response as any).$ref) {
+          content = resolveRef(spec, (response as any).$ref);
         }
         
         const headers = content?.headers || {};

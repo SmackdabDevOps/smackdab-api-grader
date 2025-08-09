@@ -10,6 +10,6 @@ export interface ParsedDoc {
 
 export async function loadYaml(path: string): Promise<ParsedDoc> {
   const raw = await fs.readFile(path, 'utf8');
-  const doc = parseDocument(raw, { keepCstNodes: true, keepNodeTypes: true });
+  const doc = parseDocument(raw, { keepNodeTypes: true } as any);
   return { ast: doc.toJS(), raw };
 }

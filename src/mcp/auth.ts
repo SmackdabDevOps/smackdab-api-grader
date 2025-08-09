@@ -19,16 +19,24 @@ declare global {
 const API_KEYS = new Map<string, { teamId: string; userId: string }>();
 
 // Initialize API keys from environment
-function initializeApiKeys() {
+export function initializeApiKeys() {
   const keysJson = process.env.API_KEYS || '{}';
   console.log('Initializing API keys from environment:', keysJson);
   try {
     const keys = JSON.parse(keysJson);
     Object.entries(keys).forEach(([apiKey, data]: [string, any]) => {
-      API_KEYS.set(apiKey, {
-        teamId: data.teamId,
-        userId: data.userId
-      });
+      // Support both simple string values and object values
+      if (typeof data === 'string') {
+        API_KEYS.set(apiKey, {
+          teamId: 'default-team',
+          userId: data
+        });
+      } else {
+        API_KEYS.set(apiKey, {
+          teamId: data.teamId || 'default-team',
+          userId: data.userId || data
+        });
+      }
       console.log(`Added API key: ${apiKey.substring(0, 10)}...`);
     });
     console.log(`Total API keys loaded: ${API_KEYS.size}`);
@@ -46,8 +54,8 @@ function initializeApiKeys() {
   }
 }
 
-// Initialize on module load
-initializeApiKeys();
+// Don't initialize on module load - let the server do it
+// initializeApiKeys();
 
 // Rate limiting map (in production, use Redis)
 const rateLimits = new Map<string, { count: number; resetTime: number }>();
@@ -55,6 +63,9 @@ const RATE_LIMIT = parseInt(process.env.RATE_LIMIT || '100'); // requests per mi
 const RATE_WINDOW = 60000; // 1 minute in milliseconds
 
 export function authenticateRequest(req: Request, res: Response, next: NextFunction) {
+  console.log('=== Auth middleware called ===');
+  console.log('Method:', req.method, 'Path:', req.path);
+  console.log('Headers:', JSON.stringify(req.headers));
   // Extract API key from headers
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -62,10 +73,17 @@ export function authenticateRequest(req: Request, res: Response, next: NextFunct
   }
 
   const apiKey = authHeader.substring(7);
+  console.log(`Authenticating request with key: "${apiKey}"`);
+  console.log(`Key length: ${apiKey.length}`);
+  console.log(`Available keys in map:`);
+  for (const [key, value] of API_KEYS.entries()) {
+    console.log(`  - "${key}" (length: ${key.length}) -> ${JSON.stringify(value)}`);
+  }
   
   // Validate API key
   const keyData = API_KEYS.get(apiKey);
   if (!keyData) {
+    console.log(`Key not found. Exact match failed for: "${apiKey}"`);
     return res.status(401).json({ error: 'Invalid API key' });
   }
 
