@@ -2,11 +2,12 @@
 # Just push this to GitHub and Render does EVERYTHING
 
 services:
-  # Your API Grader Service
+  # Your API Grader Service - FREE TIER
   - type: web
     name: api-grader-mcp
     runtime: docker
     dockerfilePath: ./Dockerfile
+    plan: free  # FREE TIER - spins down after 15 min idle
     envVars:
       - key: NODE_ENV
         value: production
@@ -26,11 +27,13 @@ services:
           property: connectionString
     autoDeploy: true  # Auto-deploy on every git push
     healthCheckPath: /health
+    region: oregon
     
 databases:
-  # PostgreSQL Database - Automatically Created
+  # PostgreSQL Database - FREE for 90 days
   - name: api-grader-db
-    plan: free  # Or 'starter' for $7/month
+    plan: free  # FREE for 90 days
     databaseName: apigrader
     user: apigrader
     postgresMajorVersion: 15
+    region: oregon
