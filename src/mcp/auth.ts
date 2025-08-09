@@ -21,6 +21,7 @@ const API_KEYS = new Map<string, { teamId: string; userId: string }>();
 // Initialize API keys from environment
 function initializeApiKeys() {
   const keysJson = process.env.API_KEYS || '{}';
+  console.log('Initializing API keys from environment:', keysJson);
   try {
     const keys = JSON.parse(keysJson);
     Object.entries(keys).forEach(([apiKey, data]: [string, any]) => {
@@ -28,7 +29,9 @@ function initializeApiKeys() {
         teamId: data.teamId,
         userId: data.userId
       });
+      console.log(`Added API key: ${apiKey.substring(0, 10)}...`);
     });
+    console.log(`Total API keys loaded: ${API_KEYS.size}`);
   } catch (error) {
     console.error('Failed to parse API_KEYS:', error);
     // Add a default key for development

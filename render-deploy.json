@@ -1,0 +1,25 @@
+{
+  "type": "web_service",
+  "name": "api-grader-mcp",
+  "ownerId": "tea-d2bjo3adbo4c73ati750",
+  "repo": "https://github.com/SmackdabDevOps/smackdab-api-grader",
+  "branch": "master",
+  "autoDeploy": "yes",
+  "serviceDetails": {
+    "env": "docker",
+    "dockerfilePath": "./Dockerfile",
+    "dockerContext": ".",
+    "region": "oregon",
+    "plan": "free",
+    "numInstances": 1,
+    "healthCheckPath": "/health",
+    "envVars": [
+      {"key": "NODE_ENV", "value": "production"},
+      {"key": "PORT", "value": "3000"},
+      {"key": "ALLOWED_ORIGINS", "value": "*"},
+      {"key": "RATE_LIMIT", "value": "100"},
+      {"key": "TEMPLATE_PATH", "value": "/app/templates/MASTER_API_TEMPLATE_v3.yaml"},
+      {"key": "API_KEYS", "value": "{\"sk_prod_001\": {\"teamId\": \"team-alpha\", \"userId\": \"admin\"}}"}
+    ]
+  }
+}
