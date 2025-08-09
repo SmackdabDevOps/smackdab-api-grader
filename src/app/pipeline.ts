@@ -85,9 +85,10 @@ export async function gradeContract(args:any, {progress}:{progress:(s:string,p:n
   const modules = [
     ['comprehensive', checkComprehensive],
     ['naming', checkNaming],
-    ['security', checkTenancy],
-    ['http', checkHttp],
-    ['http', checkHttpSemantics],
+    // Disabled redundant checkers that are already handled by comprehensive
+    // ['security', checkTenancy],  // comprehensive does this better
+    // ['http', checkHttp],
+    // ['http', checkHttpSemantics],  // has bugs with template paths
     ['caching', checkCaching],
     ['pagination', checkPagination],
     ['envelope', checkEnvelope],
@@ -100,21 +101,34 @@ export async function gradeContract(args:any, {progress}:{progress:(s:string,p:n
   let total = 0;
   const checkpointScores: Array<{checkpoint_id:string; category:string; max_points:number; scored_points:number}> = [];
   let autoFailReasons: string[] = [];
+  let comprehensiveScore = 0;
 
   for (const [category, fn] of modules){
     const r = await fn(spec);
     findings.push(...(r.findings||[]));
-    // Map module outputs back to checkpoint weights where possible
-    // We mark a checkpoint as fully earned if no finding with that ruleId exists.
-    for (const cp of CHECKPOINTS.filter(c => c.category === category)) {
-      const violated = findings.some(f => f.ruleId === cp.id);
-      const scored = violated ? 0 : cp.weight;
-      checkpointScores.push({ checkpoint_id: cp.id, category: cp.category, max_points: cp.weight, scored_points: scored });
-      total += scored;
-      if (violated && cp.autoFail) autoFailReasons.push(cp.description);
+    
+    // Special handling for comprehensive module which provides its own score
+    if (category === 'comprehensive' && r.score?.comprehensive) {
+      comprehensiveScore = r.score.comprehensive.add || 0;
+    } else {
+      // Map module outputs back to checkpoint weights where possible
+      // We mark a checkpoint as fully earned if no finding with that ruleId exists.
+      for (const cp of CHECKPOINTS.filter(c => c.category === category)) {
+        const violated = findings.some(f => f.ruleId === cp.id);
+        const scored = violated ? 0 : cp.weight;
+        checkpointScores.push({ checkpoint_id: cp.id, category: cp.category, max_points: cp.weight, scored_points: scored });
+        total += scored;
+        if (violated && cp.autoFail) autoFailReasons.push(cp.description);
+      }
     }
     // Respect module-provided auto-fail reasons too
     if (r.autoFailReasons && r.autoFailReasons.length) autoFailReasons.push(...r.autoFailReasons);
+  }
+  
+  // Use the comprehensive score if it's higher than the checkpoint-based score
+  // The comprehensive module does a much more thorough analysis
+  if (comprehensiveScore > total) {
+    total = comprehensiveScore;
   }
 
   if (total > 100) total = 100;

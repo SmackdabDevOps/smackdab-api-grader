@@ -1,0 +1,36 @@
+# Render Blueprint - Complete Automated Deployment
+# Just push this to GitHub and Render does EVERYTHING
+
+services:
+  # Your API Grader Service
+  - type: web
+    name: api-grader-mcp
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: RATE_LIMIT
+        value: 100
+      - key: TEMPLATE_PATH
+        value: /app/templates/MASTER_API_TEMPLATE_v3.yaml
+      - key: API_KEYS
+        value: '{"sk_prod_001": {"teamId": "team-alpha", "userId": "admin"}}'
+      - key: DATABASE_URL
+        fromDatabase:
+          name: api-grader-db
+          property: connectionString
+    autoDeploy: true  # Auto-deploy on every git push
+    healthCheckPath: /health
+    
+databases:
+  # PostgreSQL Database - Automatically Created
+  - name: api-grader-db
+    plan: free  # Or 'starter' for $7/month
+    databaseName: apigrader
+    user: apigrader
+    postgresMajorVersion: 15

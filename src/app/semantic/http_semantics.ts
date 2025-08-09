@@ -1,3 +1,15 @@
+// Helper to resolve $ref pointers
+function resolveRef(spec: any, ref: string): any {
+  if (!ref || !ref.startsWith('#/')) return null;
+  const path = ref.substring(2).split('/');
+  let current = spec;
+  for (const segment of path) {
+    if (!current || typeof current !== 'object') return null;
+    current = current[segment];
+  }
+  return current;
+}
+
 export function checkHttpSemantics(spec:any){
   const findings: Array<{ruleId:string; severity:'error'|'warn'|'info'; jsonPath:string; message:string; category?:string}> = [];
   const paths = spec.paths || {};
@@ -31,7 +43,13 @@ export function checkHttpSemantics(spec:any){
       for (const [code, r] of Object.entries<any>(responses)){
         const c = parseInt(code,10);
         if (!isNaN(c) && c>=400){
-          const content = r?.content || {};
+          // Resolve $ref if the response is a reference
+          let responseContent = r;
+          if (r && typeof r === 'object' && r.$ref) {
+            responseContent = resolveRef(spec, r.$ref);
+          }
+          
+          const content = responseContent?.content || {};
           if (!('application/problem+json' in content)){
             findings.push({ ruleId: 'ERR-PROBLEMJSON', severity: 'error', jsonPath: `$.paths['${p}'].${method}.responses['${code}'].content`, message: 'Errors must use application/problem+json', category: 'responses' });
           }
@@ -41,7 +59,13 @@ export function checkHttpSemantics(spec:any){
       for (const [code, r] of Object.entries<any>(responses)){
         const c = parseInt(code,10);
         if (!isNaN(c) && wantsRateLimit.has(c)){
-          const headers = r?.headers || {};
+          // Resolve $ref if the response is a reference
+          let responseContent = r;
+          if (r && typeof r === 'object' && r.$ref) {
+            responseContent = resolveRef(spec, r.$ref);
+          }
+          
+          const headers = responseContent?.headers || {};
           const required = ['X-RateLimit-Limit','X-RateLimit-Remaining','X-RateLimit-Reset'];
           for (const h of required){
             if (!(h in headers)){
@@ -52,7 +76,12 @@ export function checkHttpSemantics(spec:any){
       }
       // Async job semantics
       if (responses['202']){
-        const r = responses['202'];
+        let r = responses['202'];
+        // Resolve $ref if the response is a reference
+        if (r && typeof r === 'object' && r.$ref) {
+          r = resolveRef(spec, r.$ref);
+        }
+        
         const headers = r?.headers || {};
         if (!('Location' in headers)){
           findings.push({ ruleId: 'HTTP-202-LOCATION', severity: 'error', jsonPath: `$.paths['${p}'].${method}.responses['202'].headers`, message: '202 Accepted must include Location header pointing to job status', category: 'http' });
