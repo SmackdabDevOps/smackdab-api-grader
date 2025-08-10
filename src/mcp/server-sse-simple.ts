@@ -142,7 +142,7 @@ app.post('/sse', express.text({ type: 'application/json' }), async (req, res) =>
               result: {
                 content: [{
                   type: 'text',
-                  text: JSON.stringify(pipeline.getCheckpoints(), null, 2)
+                  text: JSON.stringify(await pipeline.listCheckpoints(), null, 2)
                 }]
               }
             };
@@ -159,7 +159,7 @@ app.post('/sse', express.text({ type: 'application/json' }), async (req, res) =>
                 yamlContent = Buffer.from(args.content, 'base64').toString('utf-8');
               }
               
-              const result = await pipeline.grade(yamlContent, args.templatePath);
+              const result = await pipeline.gradeInline({ content: yamlContent, templatePath: args.templatePath }, { progress: () => {} });
               
               response = {
                 jsonrpc: '2.0',
