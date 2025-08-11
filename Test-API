@@ -1,0 +1,2771 @@
+openapi: 3.0.3
+info:
+  title: Smackdab Inventory - Product Categories API
+  description: |
+    # Product Categories API
+    
+    Hierarchical product categorization system implementing SMACKDAB architecture requirements.
+    
+    ## Key Features
+    - Hierarchical category management with PostgreSQL ltree optimization
+    - Multi-tenant isolation via Citus distribution by organization_id
+    - High-performance tree operations with materialized paths
+    
+    ## Business Rules Implemented
+    - **RULE-CAT-001**: Maximum hierarchy depth of 10 levels
+    - **RULE-CAT-002**: Unique category codes within organization
+    - **RULE-CAT-003**: Category deletion requires no children or products
+    
+    ## Technical Architecture (SMACKDAB MANDATORY STACK)
+    - **Database**: PostgreSQL with Citus distribution by organization_id
+    - **Caching**: Dragonfly/Valkey (Redis-compatible) - NOT Redis directly
+    - **Events**: Apache Pulsar - NOT Kafka, NOT RabbitMQ, NOT SQS
+    - **Search**: PostgreSQL full-text search - NOT Elasticsearch, NOT OpenSearch
+    - **Real-time**: WebSocket with Apache Pulsar backing
+    - **NO SAGA PATTERN** - Use event-driven with Pulsar instead
+    - **NO MATERIALIZED VIEWS** - Use regular views or denormalized tables
+    - **NO FOREIGN KEYS** across distributed tables (Citus requirement)
+    
+    ## Performance Characteristics
+    - Read operations: <100ms p95
+    - Write operations: <500ms p95
+    - Bulk operations: 10,000 records/minute
+    - Availability target: 99.95%
+    
+    ## Security Model
+    - OAuth2 with granular scopes
+    - Multi-tenant isolation via headers (X-Organization-ID, X-Branch-ID)
+    - Rate limiting per tenant and tier
+    - Audit logging for compliance
+    - JWT claims include org_id and branch_id for Citus routing
+  version: 2.0.0
+  contact:
+    name: Smackdab API Support
+    email: api-support@smackdab.com
+    url: https://docs.smackdab.com/inventory
+  license:
+    name: Proprietary
+    url: https://smackdab.com/license
+  x-logo:
+    url: https://smackdab.com/logo.png
+    altText: Smackdab Logo
+
+# ============================================================================
+# RATE LIMITING (MANDATORY)
+# ============================================================================
+x-rate-limiting:
+  standard:
+    requests: 1000
+    window: 60
+    description: Standard tier - 1000 requests per minute
+  premium:
+    requests: 5000
+    window: 60
+    description: Premium tier - 5000 requests per minute
+  bulk:
+    requests: 100
+    window: 60
+    description: Bulk operations - 100 per minute
+  webhook:
+    requests: 10000
+    window: 60
+    description: Webhook notifications - 10000 per minute
+
+# ============================================================================
+# CACHING STRATEGY (MANDATORY)
+# ============================================================================
+x-caching-strategy:
+  default:
+    ttl: 300
+    strategy: "stale-while-revalidate"
+    description: Default 5-minute cache with background refresh
+  immutable:
+    ttl: 86400
+    strategy: "immutable"
+    description: Static data cached for 24 hours
+  volatile:
+    ttl: 60
+    strategy: "no-cache"
+    description: Volatile data with minimal caching
+  user-specific:
+    ttl: 1800
+    strategy: "private"
+    description: User-specific data cached for 30 minutes
+
+# ============================================================================
+# PERFORMANCE SLAs (MANDATORY)
+# ============================================================================
+x-performance-slas:
+  read:
+    p50: 30
+    p95: 100
+    p99: 500
+    description: Read operations must be fast
+  write:
+    p50: 100
+    p95: 500
+    p99: 1000
+    description: Write operations with validation
+  search:
+    p50: 200
+    p95: 1000
+    p99: 3000
+    description: Search operations with indexing
+  bulk:
+    p50: 1000
+    p95: 5000
+    p99: 10000
+    description: Bulk operations with higher tolerance
+
+servers:
+  - url: https://api.smackdab.com/inventory/v2
+    description: Production server
+    variables:
+      domain:
+        default: inventory
+        description: API domain
+        enum:
+          - inventory
+          - financial
+          - mobile
+          - admin
+  - url: https://staging-api.smackdab.com/inventory/v2
+    description: Staging server
+    variables:
+      domain:
+        default: inventory
+        enum: [inventory, financial, mobile, admin]
+  - url: http://localhost:8000/inventory/v2
+    description: Development server
+    variables:
+      domain:
+        default: inventory
+        enum: [inventory, financial, mobile, admin]
+
+# ============================================================================
+# DEFAULT SECURITY
+# ============================================================================
+security:
+  - OAuth2:
+      - categories:read
+      - categories:write
+  - BearerAuth: []
+
+tags:
+  - name: Categories
+    description: Product category management operations
+  - name: Category Tree
+    description: Hierarchical tree operations and navigation
+  - name: Category Products
+    description: Product assignment and category-based queries
+  - name: Category Rules
+    description: Category-based business rules and constraints
+
+paths:
+  /api/v2/inventory/categories:
+    get:
+      tags:
+        - Categories
+      summary: List product categories
+      description: |
+        Retrieve a paginated list of product categories with filtering and search capabilities.
+        Supports filtering by parent category, depth level, and product association.
+      operationId: listCategories
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - name: search
+          in: query
+          description: Search by category name or code
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 100
+          example: "Electronics"
+        - name: parent_id
+          in: query
+          description: Filter by parent category ID (null for root categories)
+          schema:
+            type: integer
+            format: int64
+            nullable: true
+          example: 124
+        - name: depth
+          in: query
+          description: Filter by hierarchy depth level
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 10
+          example: 1
+        - name: include_empty
+          in: query
+          description: Include categories with no products
+          schema:
+            type: boolean
+            default: true
+        - name: has_products
+          in: query
+          description: Filter by categories that have products
+          schema:
+            type: boolean
+        - name: status
+          in: query
+          description: Filter by category status
+          schema:
+            type: string
+            enum: [active, inactive]
+            default: active
+        - name: after_key
+          in: query
+          description: Key-set pagination marker (last item key from previous page)
+          schema:
+            type: string
+          example: "category_127:2025-01-27T10:00:00Z"
+        - name: limit
+          in: query
+          description: Page size limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort_by
+          in: query
+          description: Field to sort by
+          schema:
+            type: string
+            enum: [name, code, path, created_at, updated_at, product_count]
+            default: name
+        - name: sort_order
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            X-Performance-SLA:
+              description: Performance SLA compliance status
+              schema:
+                type: string
+                enum: ["compliant", "warning", "breach"]
+                example: "compliant"
+            X-Response-Time-MS:
+              description: Server processing time in milliseconds
+              schema:
+                type: integer
+                example: 15
+            X-Cache-Status:
+              description: Multi-layer cache performance
+              schema:
+                type: string
+                enum: ["hit-app", "hit-dragonfly", "hit-cdn", "miss", "stale"]
+                example: "hit-dragonfly"
+            X-Cache-TTL:
+              description: Remaining cache TTL in seconds
+              schema:
+                type: integer
+                example: 245
+            ETag:
+              description: Entity tag for cache validation
+              schema:
+                type: string
+                example: '"categories-org-12345-v3-1642248000"'
+            X-Citus-Shard-Hit:
+              description: Single shard query optimization success
+              schema:
+                type: boolean
+                example: true
+            X-Total-Count-Estimate:
+              description: Estimated total count for pagination
+              schema:
+                type: integer
+                example: 1500
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+                  performance:
+                    type: object
+                    description: Performance metrics and optimization data
+                    properties:
+                      query_time_ms:
+                        type: integer
+                        description: Database query time in milliseconds
+                        example: 12
+                      cache_strategy_used:
+                        type: string
+                        enum: ["application", "dragonfly", "cdn", "database"]
+                        example: "dragonfly"
+                      shard_count_accessed:
+                        type: integer
+                        description: Number of Citus shards accessed
+                        example: 1
+                      optimization_applied:
+                        type: array
+                        items:
+                          type: string
+                        example: ["cursor_pagination", "single_shard", "cache_hit"]
+                      next_cursor:
+                        type: string
+                        description: Optimized cursor for next page
+                        nullable: true
+                        example: "eyJjYXRlZ29yeV9pZCI6MTMwLCJzb3J0X3ZhbHVlIjoiMjAyNS0wMS0yN1QxMTowMDowMFoifQ=="
+              examples:
+                success:
+                  $ref: '#/components/examples/CategoryListExample'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Categories
+      summary: Create a product category
+      description: |
+        Create a new product category in the hierarchical structure.
+        Categories can be created as root categories or as children of existing categories.
+        Automatically calculates path and depth based on parent category.
+      operationId: createCategory
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryRequest'
+            examples:
+              root_category:
+                $ref: '#/components/examples/CreateRootCategory'
+              child_category:
+                $ref: '#/components/examples/CreateChildCategory'
+      responses:
+        '201':
+          description: Category created successfully
+          headers:
+            Location:
+              description: URL of the created category
+              schema:
+                type: string
+                example: /api/v2/inventory/categories/789
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Category'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v2/inventory/categories/{category_id}:
+    get:
+      tags:
+        - Categories
+      summary: Get category details
+      description: |
+        Retrieve detailed information about a specific category including its
+        children, product count, and hierarchy information.
+      operationId: getCategory
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CategoryId'
+        - name: include_children
+          in: query
+          description: Include immediate child categories
+          schema:
+            type: boolean
+            default: true
+        - name: include_products
+          in: query
+          description: Include product count and sample products
+          schema:
+            type: boolean
+            default: false
+        - name: include_rules
+          in: query
+          description: Include category-specific business rules
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CategoryDetail'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Categories
+      summary: Update category
+      description: |
+        Update an existing category's information.
+        Cannot change parent_category_id - use move operation instead.
+        Validates business rules before applying changes.
+      operationId: updateCategory
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CategoryId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCategoryRequest'
+      responses:
+        '200':
+          description: Category updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Category'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Categories
+      summary: Delete category
+      description: |
+        Soft delete a category (mark as inactive).
+        Cannot delete if category has child categories or associated products.
+        Maintains audit trail of deletion.
+      operationId: deleteCategory
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CategoryId'
+        - name: force
+          in: query
+          description: Force deletion (reassign products to parent category)
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '204':
+          description: Category deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete category with children or products
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+              examples:
+                category_has_children:
+                  value:
+                    error:
+                      code: "CATEGORY_HAS_CHILDREN"
+                      message: "Cannot delete category with child categories"
+                      details:
+                        category_id: 789
+                        child_count: 5
+                category_has_products:
+                  value:
+                    error:
+                      code: "CATEGORY_HAS_PRODUCTS"
+                      message: "Cannot delete category with associated products"
+                      details:
+                        category_id: 789
+                        product_count: 150
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v2/inventory/categories/tree:
+    get:
+      tags:
+        - Category Tree
+      summary: Get category tree
+      description: |
+        Retrieve the complete category hierarchy as a tree structure.
+        Optimized for navigation menus and hierarchical displays.
+        Supports filtering by root category and maximum depth.
+      operationId: getCategoryTree
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - name: root_id
+          in: query
+          description: Start from specific category (default: all roots)
+          schema:
+            type: integer
+            format: int64
+        - name: max_depth
+          in: query
+          description: Maximum depth to traverse
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+            default: 5
+        - name: include_products
+          in: query
+          description: Include product counts for each category
+          schema:
+            type: boolean
+            default: true
+        - name: include_inactive
+          in: query
+          description: Include inactive categories
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            X-Performance-SLA:
+              description: Tree operation performance SLA status
+              schema:
+                type: string
+                enum: ["compliant", "warning", "breach"]
+                example: "compliant"
+            X-Response-Time-MS:
+              description: Tree generation time in milliseconds
+              schema:
+                type: integer
+                example: 25
+            Cache-Control:
+              description: Optimized cache control for tree structure
+              schema:
+                type: string
+                default: "public, max-age=600, s-maxage=300, stale-while-revalidate=60"
+            X-Cache-Status:
+              description: Tree cache performance status
+              schema:
+                type: string
+                enum: ["hit-cdn", "hit-dragonfly", "hit-app", "miss", "building"]
+                example: "hit-cdn"
+            ETag:
+              description: Tree version for cache validation
+              schema:
+                type: string
+                example: '"tree-org-12345-root-124-depth-5-v2"'
+            X-Tree-Optimization:
+              description: Applied tree optimization strategies
+              schema:
+                type: string
+                example: "materialized_path,ltree_index,single_query"
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - tree
+                      - total_categories
+                      - max_depth
+                    properties:
+                      tree:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CategoryTreeNode'
+                      total_categories:
+                        type: integer
+                        description: Total number of categories in tree
+                      max_depth:
+                        type: integer
+                        description: Maximum depth reached in tree
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+              examples:
+                tree_example:
+                  $ref: '#/components/examples/CategoryTreeExample'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v2/inventory/categories/{category_id}/move:
+    post:
+      tags:
+        - Category Tree
+      summary: Move category to new parent
+      description: |
+        Move a category to a different parent in the hierarchy.
+        Updates all descendant paths and validates for circular references.
+        This is a complex operation that may take time for large subtrees.
+      operationId: moveCategory
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CategoryId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveCategoryRequest'
+      responses:
+        '200':
+          description: Category moved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - category_id
+                      - old_parent_id
+                      - new_parent_id
+                      - old_path
+                      - new_path
+                      - descendants_updated
+                    properties:
+                      category_id:
+                        type: integer
+                        format: int64
+                      old_parent_id:
+                        type: integer
+                        format: int64
+                        nullable: true
+                      new_parent_id:
+                        type: integer
+                        format: int64
+                        nullable: true
+                      old_path:
+                        type: string
+                        description: Previous ltree path
+                      new_path:
+                        type: string
+                        description: New ltree path
+                      descendants_updated:
+                        type: integer
+                        description: Number of descendant categories updated
+                      updated_at:
+                        type: string
+                        format: date-time
+                      updated_by:
+                        type: integer
+                        format: int64
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Move would create circular reference or violate constraints
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+              examples:
+                circular_reference:
+                  value:
+                    error:
+                      code: "CIRCULAR_REFERENCE"
+                      message: "Cannot move category to its own descendant"
+                      details:
+                        category_id: 125
+                        target_parent_id: 128
+                        current_path: "/124/125/"
+                max_depth_exceeded:
+                  value:
+                    error:
+                      code: "MAX_DEPTH_EXCEEDED"
+                      message: "Move would exceed maximum hierarchy depth"
+                      details:
+                        current_depth: 4
+                        max_allowed_depth: 5
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v2/inventory/categories/{category_id}/products:
+    get:
+      tags:
+        - Category Products
+      summary: Get products in category
+      description: |
+        Retrieve products assigned to a specific category.
+        Supports option to include products from child categories for aggregated views.
+      operationId: getCategoryProducts
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CategoryId'
+        - name: include_subcategories
+          in: query
+          description: Include products from child categories
+          schema:
+            type: boolean
+            default: false
+        - name: status
+          in: query
+          description: Filter by product status
+          schema:
+            type: string
+            enum: [active, inactive, discontinued]
+            default: active
+        - name: after_key
+          in: query
+          description: Key-set pagination marker
+          schema:
+            type: string
+          example: "product_456789:2025-01-27T10:00:00Z"
+        - name: limit
+          in: query
+          description: Page size limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort_by
+          in: query
+          description: Field to sort by
+          schema:
+            type: string
+            enum: [sku, name, created_at, updated_at]
+            default: sku
+        - name: sort_order
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CategoryProduct'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v2/inventory/categories/{category_id}/products/assign:
+    post:
+      tags:
+        - Category Products
+      summary: Assign products to category
+      description: |
+        Assign one or more products to a category.
+        Supports bulk assignment for efficient category management.
+      operationId: assignProductsToCategory
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CategoryId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignProductsRequest'
+      responses:
+        '200':
+          description: Products assigned successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - category_id
+                      - products_assigned
+                      - products_failed
+                    properties:
+                      category_id:
+                        type: integer
+                        format: int64
+                      products_assigned:
+                        type: integer
+                        description: Number of products successfully assigned
+                      products_failed:
+                        type: integer
+                        description: Number of products that failed assignment
+                      failed_products:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            product_id:
+                              type: integer
+                              format: int64
+                            error_code:
+                              type: string
+                            error_message:
+                              type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v2/inventory/categories/{category_id}/rules:
+    get:
+      tags:
+        - Category Rules
+      summary: Get category business rules
+      description: |
+        Retrieve business rules and constraints associated with a category.
+        Includes inheritance rules from parent categories.
+      operationId: getCategoryRules
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CategoryId'
+        - name: include_inherited
+          in: query
+          description: Include rules inherited from parent categories
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CategoryRule'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Category Rules
+      summary: Create category rule
+      description: |
+        Create a new business rule for a category.
+        Rules can be applied to the current category or inherited by child categories.
+      operationId: createCategoryRule
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CategoryId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryRuleRequest'
+      responses:
+        '201':
+          description: Category rule created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CategoryRule'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v2/inventory/categories/search:
+    get:
+      tags:
+        - Categories
+      summary: Search categories
+      description: |
+        Advanced search across categories with full-text search capabilities.
+        Supports searching by name, code, description, and custom attributes.
+      operationId: searchCategories
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - name: q
+          in: query
+          required: true
+          description: Search query
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 100
+        - name: fields
+          in: query
+          description: Fields to search in
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [name, code, description, custom_attributes]
+            default: [name, code]
+        - name: max_results
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Category'
+                        - type: object
+                          properties:
+                            search_score:
+                              type: number
+                              format: float
+                              description: Relevance score (0.0 to 1.0)
+                            matched_fields:
+                              type: array
+                              items:
+                                type: string
+                              description: Fields that matched the query
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v2/inventory/categories/bulk:
+    post:
+      tags:
+        - Categories
+      summary: Bulk category operations
+      description: |
+        Process bulk category operations asynchronously via Apache Pulsar.
+        Supports creation, updates, moves, and deletions in batch.
+        Operations are processed in order with rollback on failure.
+      operationId: bulkCategoryOperations
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/PulsarTopic'
+        - $ref: '#/components/parameters/PulsarPartitionKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkCategoryRequest'
+            examples:
+              bulk_create:
+                summary: Bulk category creation
+                value:
+                  operations:
+                    - operation: "create"
+                      data:
+                        name: "Electronics Batch 1"
+                        category_code: "ELEC-B1"
+                        created_by: 101
+                    - operation: "create"
+                      data:
+                        name: "Electronics Batch 2"
+                        category_code: "ELEC-B2"
+                        parent_category_id: "${previous_result.category_id}"
+                        created_by: 101
+                  options:
+                    batch_size: 100
+                    stop_on_error: true
+                    notification_webhook: "https://api.smackdab.com/webhooks/bulk-category"
+      responses:
+        '202':
+          description: Bulk operations accepted for processing
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-Pulsar-Topic:
+              description: Pulsar topic for bulk processing
+              schema:
+                type: string
+                example: "tenant-12345-category-bulk-ops"
+            X-Job-ID:
+              description: Bulk operation job ID
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkOperationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v2/inventory/categories/events/{event_id}/status:
+    get:
+      tags:
+        - Categories
+      summary: Get event processing status
+      description: |
+        Check the status of an asynchronous category operation.
+        Tracks events processed through Apache Pulsar.
+      operationId: getCategoryEventStatus
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+        - $ref: '#/components/parameters/RequestId'
+        - name: event_id
+          in: path
+          required: true
+          description: Event or job identifier
+          schema:
+            type: string
+            format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Event status retrieved successfully
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-Pulsar-Message-ID:
+              $ref: '#/components/headers/X-Pulsar-Message-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventStatusResponse'
+        '404':
+          description: Event not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+# ============================================================================
+# WEBHOOKS (Event-Driven Architecture)
+# ============================================================================
+webhooks:
+  categoryCreated:
+    post:
+      summary: Category creation notification
+      description: |
+        Triggered when a new category is created.
+        **Retry Policy**: 3 retries with exponential backoff
+        **Timeout**: 5 seconds per request
+        **Signature**: HMAC-SHA256 in X-Webhook-Signature header
+      x-retry-policy:
+        attempts: 3
+        backoff: exponential
+        initial_delay: 1000
+        max_delay: 30000
+      x-signature:
+        algorithm: HMAC-SHA256
+        header: X-Webhook-Signature
+      x-timeout: 5000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookEvent'
+      responses:
+        '200':
+          description: Webhook processed
+        '202':
+          description: Webhook queued
+  
+  categoryUpdated:
+    post:
+      summary: Category update notification
+      description: |
+        Triggered when a category is updated.
+        **Retry Policy**: 3 retries with exponential backoff
+        **Timeout**: 5 seconds per request
+        **Signature**: HMAC-SHA256 in X-Webhook-Signature header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookEvent'
+      responses:
+        '200':
+          description: Webhook processed
+        '202':
+          description: Webhook queued
+  
+  categoryDeleted:
+    post:
+      summary: Category deletion notification
+      description: |
+        Triggered when a category is deleted.
+        **Retry Policy**: 3 retries with exponential backoff
+        **Timeout**: 5 seconds per request
+        **Signature**: HMAC-SHA256 in X-Webhook-Signature header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookEvent'
+      responses:
+        '200':
+          description: Webhook processed
+        '202':
+          description: Webhook queued
+
+  categoryMoved:
+    post:
+      summary: Category move notification
+      description: |
+        Triggered when a category is moved in hierarchy.
+        **Retry Policy**: 3 retries with exponential backoff
+        **Timeout**: 5 seconds per request
+        **Signature**: HMAC-SHA256 in X-Webhook-Signature header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookEvent'
+      responses:
+        '200':
+          description: Webhook processed
+        '202':
+          description: Webhook queued
+
+# ============================================================================
+# COMPONENTS
+# ============================================================================
+components:
+  # Security Schemes
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      description: OAuth2 with granular scopes
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.smackdab.com/oauth2/authorize
+          tokenUrl: https://auth.smackdab.com/oauth2/token
+          refreshUrl: https://auth.smackdab.com/oauth2/refresh
+          scopes:
+            categories:read: Read category data
+            categories:write: Create and update categories
+            categories:delete: Delete categories
+            categories:admin: Full administrative access
+    
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token with embedded claims
+    
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for webhook endpoints
+
+  parameters:
+    OrganizationId:
+      name: X-Organization-Id
+      in: header
+      required: true
+      description: Organization identifier for multi-tenant isolation
+      schema:
+        type: integer
+        format: int64
+      example: 12345
+
+    BranchId:
+      name: X-Branch-Id
+      in: header
+      required: true
+      description: Branch identifier within the organization
+      schema:
+        type: integer
+        format: int64
+      example: 1
+
+    # Citus Distribution Headers
+    CitusDistributedBy:
+      name: X-Citus-Distributed-By
+      in: header
+      required: false
+      description: Citus distribution key (organization_id) for sharding awareness
+      schema:
+        type: string
+        enum: [organization_id]
+        default: organization_id
+
+    # Pulsar Event Headers
+    PulsarTopic:
+      name: X-Pulsar-Topic
+      in: header
+      required: false
+      description: Apache Pulsar topic for async event processing
+      schema:
+        type: string
+        pattern: '^tenant-\d+-category-[a-z_]+$'
+        example: "tenant-12345-category-created"
+
+    PulsarPartitionKey:
+      name: X-Pulsar-Partition-Key
+      in: header
+      required: false
+      description: Pulsar partition key for ordered processing
+      schema:
+        type: string
+        example: "org-12345"
+
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      description: Unique request identifier for tracing
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+    CategoryId:
+      name: category_id
+      in: path
+      required: true
+      description: Unique category identifier
+      schema:
+        type: integer
+        format: int64
+      example: 789
+
+    IdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      required: false
+      description: Idempotency key for safe retries of mutations
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+  schemas:
+    # RFC 7807 Problem Details (MANDATORY)
+    ProblemDetail:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - detail
+        - instance
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Problem type identifier
+          example: "https://api.smackdab.com/problems/validation-error"
+        title:
+          type: string
+          description: Human-readable summary
+          example: "Validation Error"
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        detail:
+          type: string
+          description: Human-readable explanation
+          example: "The request contains invalid field values"
+        instance:
+          type: string
+          format: uri
+          description: Problem instance
+          example: "/api/v2/inventory/categories/123"
+        errors:
+          type: array
+          description: Field-specific errors
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: "/data/name"
+              code:
+                type: string
+                example: "REQUIRED"
+              message:
+                type: string
+                example: "Category name is required"
+    
+    # Standard Response Envelope (MANDATORY)
+    ResponseEnvelope:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+        - _links
+      properties:
+        success:
+          type: boolean
+          description: Operation success indicator
+        data:
+          type: object
+          description: Response payload
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+        _links:
+          $ref: '#/components/schemas/HATEOASLinks'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetail'
+    
+    HATEOASLinks:
+      type: object
+      required:
+        - self
+      properties:
+        self:
+          $ref: '#/components/schemas/Link'
+        collection:
+          $ref: '#/components/schemas/Link'
+        next:
+          $ref: '#/components/schemas/Link'
+        prev:
+          $ref: '#/components/schemas/Link'
+        first:
+          $ref: '#/components/schemas/Link'
+        last:
+          $ref: '#/components/schemas/Link'
+    
+    Link:
+      type: object
+      required:
+        - href
+      properties:
+        href:
+          type: string
+          format: uri
+          example: "/api/v2/inventory/categories/123"
+        method:
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE]
+          default: GET
+        type:
+          type: string
+          description: Media type
+          example: "application/json"
+    
+    # Webhook Event Schema
+    WebhookEvent:
+      type: object
+      required:
+        - event_id
+        - event_type
+        - timestamp
+        - data
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: Unique event identifier
+        event_type:
+          type: string
+          enum: [category.created, category.updated, category.deleted, category.moved]
+        timestamp:
+          type: string
+          format: date-time
+          description: Event occurrence timestamp
+        data:
+          type: object
+          description: Event-specific data
+          properties:
+            category:
+              $ref: '#/components/schemas/Category'
+            previous_state:
+              $ref: '#/components/schemas/Category'
+              nullable: true
+            organization_id:
+              type: integer
+              format: int64
+            branch_id:
+              type: integer
+              format: int64
+            user_id:
+              type: integer
+              format: int64
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Additional event metadata
+    
+    # Bulk operation schemas
+    BulkCategoryRequest:
+      type: object
+      required:
+        - operations
+      properties:
+        operations:
+          type: array
+          description: List of category operations to perform
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/CategoryOperation'
+        options:
+          $ref: '#/components/schemas/BulkOperationOptions'
+
+    CategoryOperation:
+      type: object
+      required:
+        - operation
+        - data
+      properties:
+        operation:
+          type: string
+          enum: [create, update, move, delete]
+          description: Type of operation to perform
+        data:
+          oneOf:
+            - $ref: '#/components/schemas/CreateCategoryRequest'
+            - $ref: '#/components/schemas/UpdateCategoryRequest'
+            - $ref: '#/components/schemas/MoveCategoryRequest'
+            - type: object  # delete operation data
+              properties:
+                category_id:
+                  type: integer
+                  format: int64
+                force:
+                  type: boolean
+                  default: false
+        dependency:
+          type: string
+          description: Reference to previous operation result (e.g., "${operation_1.category_id}")
+          nullable: true
+          example: "${previous_result.category_id}"
+
+    BulkOperationOptions:
+      type: object
+      properties:
+        batch_size:
+          type: integer
+          description: Number of operations to process per batch
+          minimum: 1
+          maximum: 100
+          default: 10
+        stop_on_error:
+          type: boolean
+          description: Stop processing on first error
+          default: true
+        notification_webhook:
+          type: string
+          format: uri
+          description: Webhook URL for status notifications
+          nullable: true
+        timeout_seconds:
+          type: integer
+          description: Maximum processing time in seconds
+          minimum: 30
+          maximum: 3600
+          default: 300
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+          default: normal
+
+    BulkOperationResponse:
+      type: object
+      required:
+        - job_id
+        - status
+        - operations_queued
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: Unique job identifier
+        status:
+          type: string
+          enum: [queued, processing, completed, failed, partial]
+          description: Current job status
+        operations_queued:
+          type: integer
+          description: Number of operations queued for processing
+        estimated_completion:
+          type: string
+          format: date-time
+          description: Estimated completion time
+          nullable: true
+        webhook_url:
+          type: string
+          format: uri
+          description: Webhook URL for notifications
+          nullable: true
+        pulsar_topic:
+          type: string
+          description: Pulsar topic for status updates
+        created_at:
+          type: string
+          format: date-time
+
+    EventStatusResponse:
+      type: object
+      required:
+        - event_id
+        - status
+        - created_at
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, processing, completed, failed, timeout]
+        progress:
+          type: object
+          properties:
+            completed:
+              type: integer
+              description: Number of completed operations
+            total:
+              type: integer
+              description: Total number of operations
+            failed:
+              type: integer
+              description: Number of failed operations
+            current_operation:
+              type: string
+              description: Currently processing operation
+        results:
+          type: array
+          description: Results of completed operations
+          items:
+            type: object
+            properties:
+              operation_id:
+                type: integer
+              status:
+                type: string
+                enum: [success, failed, skipped]
+              result:
+                oneOf:
+                  - $ref: '#/components/schemas/Category'
+                  - $ref: '#/components/schemas/ProblemDetail'
+              processing_time_ms:
+                type: integer
+        error:
+          $ref: '#/components/schemas/ProblemDetail'
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        pulsar_message_id:
+          type: string
+          nullable: true
+
+    Category:
+      type: object
+      required:
+        - category_id
+        - organization_id
+        - branch_id
+        - name
+        - path
+        - depth
+        - status
+        - created_at
+        - created_by
+      properties:
+        category_id:
+          type: integer
+          format: int64
+          description: Unique category identifier
+          example: 789
+        organization_id:
+          type: integer
+          format: int64
+          description: Organization identifier
+          example: 12345
+        branch_id:
+          type: integer
+          format: int64
+          description: Branch identifier
+          example: 1
+        name:
+          type: string
+          description: Category name
+          minLength: 1
+          maxLength: 255
+          example: "Electronics"
+        description:
+          type: string
+          description: Category description
+          maxLength: 4000
+          nullable: true
+          example: "Electronic components and devices"
+        parent_category_id:
+          type: integer
+          format: int64
+          description: Parent category ID (null for root categories)
+          nullable: true
+          example: null
+        category_code:
+          type: string
+          description: Unique category code/SKU prefix
+          maxLength: 50
+          nullable: true
+          pattern: '^[A-Z0-9][A-Z0-9\-_]*$'
+          example: "ELEC"
+        path:
+          type: string
+          description: Hierarchical path (ltree format)
+          example: "/124/"
+        depth:
+          type: integer
+          description: Depth in hierarchy (0 = root)
+          minimum: 0
+          maximum: 10
+          example: 0
+        status:
+          type: string
+          description: Category status
+          enum: [active, inactive]
+          example: "active"
+        sort_order:
+          type: integer
+          description: Sort order within parent category
+          minimum: 0
+          nullable: true
+          example: 10
+        is_leaf:
+          type: boolean
+          description: Whether category is a leaf node (has no children)
+          readOnly: true
+          example: false
+        child_count:
+          type: integer
+          description: Number of immediate child categories
+          readOnly: true
+          example: 5
+        product_count:
+          type: integer
+          description: Number of products directly assigned to this category
+          readOnly: true
+          example: 150
+        total_product_count:
+          type: integer
+          description: Total products including those in child categories
+          readOnly: true
+          example: 375
+        custom_attributes:
+          type: object
+          description: Custom attributes as key-value pairs
+          additionalProperties:
+            type: string
+            maxLength: 500
+          nullable: true
+          example:
+            temperature_zone: "ambient"
+            hazmat_category: "none"
+        # SmackFlow optimization markers
+        smackflow_optimized:
+          type: boolean
+          description: Whether category uses SmackFlow hybrid EFV optimization
+          readOnly: true
+          example: true
+        cache_strategy:
+          type: string
+          description: SmackFlow caching strategy for this category
+          enum: [full_cache, partial_cache, no_cache, write_through]
+          readOnly: true
+          example: "full_cache"
+        # Citus distribution metadata  
+        citus_shard_key:
+          type: string
+          description: Citus distribution column (always organization_id)
+          readOnly: true
+          enum: [organization_id]
+          example: "organization_id"
+        citus_colocated_tables:
+          type: array
+          description: Tables co-located with categories for efficient joins
+          readOnly: true
+          items:
+            type: string
+          example: ["products", "category_rules", "product_categories"]
+        # Performance optimization metadata
+        index_hints:
+          type: object
+          description: Database index usage hints for optimal queries
+          readOnly: true
+          properties:
+            path_index:
+              type: string
+              example: "category_path_gin_idx"
+            organization_index:
+              type: string
+              example: "category_org_branch_idx"
+            ltree_ops:
+              type: array
+              items:
+                type: string
+              example: ["~", "@>", "<@"]
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+          example: "2025-01-15T10:30:00Z"
+        created_by:
+          type: integer
+          format: int64
+          description: User ID who created the category
+          example: 101
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          nullable: true
+          example: "2025-01-16T14:20:00Z"
+        updated_by:
+          type: integer
+          format: int64
+          description: User ID who last updated the category
+          nullable: true
+          example: 102
+        _links:
+          $ref: '#/components/schemas/HATEOASLinks'
+
+    CreateCategoryRequest:
+      type: object
+      required:
+        - name
+        - created_by
+      properties:
+        name:
+          type: string
+          description: Category name
+          minLength: 1
+          maxLength: 255
+          example: "Electronics"
+        description:
+          type: string
+          description: Category description
+          maxLength: 4000
+          nullable: true
+          example: "Electronic components and devices"
+        parent_category_id:
+          type: integer
+          format: int64
+          description: Parent category ID (null for root category)
+          nullable: true
+          example: null
+        category_code:
+          type: string
+          description: Unique category code/SKU prefix
+          maxLength: 50
+          nullable: true
+          pattern: '^[A-Z0-9][A-Z0-9\-_]*$'
+          example: "ELEC"
+        sort_order:
+          type: integer
+          description: Sort order within parent category
+          minimum: 0
+          nullable: true
+          example: 10
+        custom_attributes:
+          type: object
+          description: Custom attributes as key-value pairs
+          additionalProperties:
+            type: string
+            maxLength: 500
+          nullable: true
+          example:
+            temperature_zone: "ambient"
+            hazmat_category: "none"
+        created_by:
+          type: integer
+          format: int64
+          description: User ID creating the category
+          example: 101
+
+    UpdateCategoryRequest:
+      type: object
+      required:
+        - updated_by
+      properties:
+        name:
+          type: string
+          description: Updated category name
+          minLength: 1
+          maxLength: 255
+          example: "Electronic Components"
+        description:
+          type: string
+          description: Updated category description
+          maxLength: 4000
+          nullable: true
+          example: "All types of electronic components"
+        category_code:
+          type: string
+          description: Updated category code
+          maxLength: 50
+          nullable: true
+          pattern: '^[A-Z0-9][A-Z0-9\-_]*$'
+          example: "ELEC-COMP"
+        status:
+          type: string
+          description: Category status
+          enum: [active, inactive]
+          example: "active"
+        sort_order:
+          type: integer
+          description: Sort order within parent category
+          minimum: 0
+          nullable: true
+          example: 15
+        custom_attributes:
+          type: object
+          description: Custom attributes as key-value pairs
+          additionalProperties:
+            type: string
+            maxLength: 500
+          nullable: true
+          example:
+            temperature_zone: "controlled"
+            hazmat_category: "electrical"
+        updated_by:
+          type: integer
+          format: int64
+          description: User ID performing the update
+          example: 102
+
+    MoveCategoryRequest:
+      type: object
+      required:
+        - new_parent_id
+        - updated_by
+      properties:
+        new_parent_id:
+          type: integer
+          format: int64
+          description: New parent category ID (null for root level)
+          nullable: true
+          example: 130
+        updated_by:
+          type: integer
+          format: int64
+          description: User ID performing the move
+          example: 102
+        reason:
+          type: string
+          description: Reason for the move (for audit purposes)
+          maxLength: 500
+          nullable: true
+          example: "Reorganizing product hierarchy"
+
+    CategoryDetail:
+      allOf:
+        - $ref: '#/components/schemas/Category'
+        - type: object
+          properties:
+            children:
+              type: array
+              description: Immediate child categories
+              items:
+                $ref: '#/components/schemas/Category'
+            parent:
+              $ref: '#/components/schemas/Category'
+              nullable: true
+              description: Parent category information
+            ancestors:
+              type: array
+              description: Path to root category
+              items:
+                type: object
+                properties:
+                  category_id:
+                    type: integer
+                    format: int64
+                  name:
+                    type: string
+                  path:
+                    type: string
+            sample_products:
+              type: array
+              description: Sample products in this category (if requested)
+              items:
+                $ref: '#/components/schemas/CategoryProduct'
+            rules:
+              type: array
+              description: Business rules applied to this category
+              items:
+                $ref: '#/components/schemas/CategoryRule'
+
+    CategoryTreeNode:
+      type: object
+      required:
+        - category_id
+        - name
+        - path
+        - depth
+      properties:
+        category_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        category_code:
+          type: string
+          nullable: true
+        path:
+          type: string
+        depth:
+          type: integer
+        product_count:
+          type: integer
+          nullable: true
+        total_product_count:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryTreeNode'
+
+    CategoryProduct:
+      type: object
+      required:
+        - product_id
+        - sku
+        - name
+        - category_id
+        - category_name
+      properties:
+        product_id:
+          type: integer
+          format: int64
+          example: 456789
+        sku:
+          type: string
+          example: "ELEC-CAP-001"
+        name:
+          type: string
+          example: "Ceramic Capacitor 10uF"
+        description:
+          type: string
+          nullable: true
+          example: "High-quality ceramic capacitor"
+        category_id:
+          type: integer
+          format: int64
+          example: 125
+        category_name:
+          type: string
+          example: "Capacitors"
+        category_path:
+          type: string
+          example: "/124/125/"
+        status:
+          type: string
+          enum: [active, inactive, discontinued]
+          example: "active"
+        quantity_on_hand:
+          type: number
+          format: decimal
+          nullable: true
+          example: 500.0
+        base_unit_of_measure:
+          type: string
+          example: "EACH"
+        created_at:
+          type: string
+          format: date-time
+
+    AssignProductsRequest:
+      type: object
+      required:
+        - product_ids
+        - updated_by
+      properties:
+        product_ids:
+          type: array
+          description: List of product IDs to assign to category
+          minItems: 1
+          maxItems: 10000  # Increased for bulk operations
+          items:
+            type: integer
+            format: int64
+          example: [456789, 456790, 456791]
+        replace_existing:
+          type: boolean
+          description: Replace existing category assignment
+          default: false
+        updated_by:
+          type: integer
+          format: int64
+          description: User ID performing the assignment
+          example: 102
+        async_processing:
+          type: boolean
+          description: Force async processing via Pulsar (auto-enabled for >100 products)
+          default: false
+        notification_webhook:
+          type: string
+          format: uri
+          description: Webhook URL for async processing notifications
+          nullable: true
+          example: "https://api.smackdab.com/webhooks/category-assignment"
+        batch_size:
+          type: integer
+          description: Processing batch size for async operations
+          minimum: 10
+          maximum: 1000
+          default: 100
+          example: 250
+        priority:
+          type: string
+          description: Processing priority for async operations
+          enum: [low, normal, high, urgent]
+          default: normal
+
+    CategoryRule:
+      type: object
+      required:
+        - rule_id
+        - category_id
+        - rule_type
+        - rule_data
+        - is_active
+        - created_at
+        - created_by
+      properties:
+        rule_id:
+          type: integer
+          format: int64
+          example: 1001
+        category_id:
+          type: integer
+          format: int64
+          example: 789
+        rule_type:
+          type: string
+          description: Type of business rule
+          enum: 
+            - location_constraint
+            - pricing_rule
+            - approval_required
+            - serial_required
+            - expiry_tracking
+            - custom_validation
+          example: "location_constraint"
+        rule_name:
+          type: string
+          maxLength: 255
+          example: "Temperature Control Required"
+        rule_description:
+          type: string
+          maxLength: 1000
+          nullable: true
+          example: "Products in this category require temperature-controlled storage"
+        rule_data:
+          type: object
+          description: Rule-specific configuration data
+          example:
+            min_temperature: -20
+            max_temperature: 5
+            required_certifications: ["FDA", "HACCP"]
+        priority:
+          type: integer
+          description: Rule execution priority (1 = highest)
+          minimum: 1
+          maximum: 100
+          default: 50
+        is_inherited:
+          type: boolean
+          description: Whether rule applies to child categories
+          default: true
+        is_active:
+          type: boolean
+          description: Whether rule is currently active
+          default: true
+        effective_from:
+          type: string
+          format: date-time
+          nullable: true
+          description: When rule becomes effective
+        effective_to:
+          type: string
+          format: date-time
+          nullable: true
+          description: When rule expires
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: integer
+          format: int64
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_by:
+          type: integer
+          format: int64
+          nullable: true
+
+    CreateCategoryRuleRequest:
+      type: object
+      required:
+        - rule_type
+        - rule_name
+        - rule_data
+        - created_by
+      properties:
+        rule_type:
+          type: string
+          enum: 
+            - location_constraint
+            - pricing_rule
+            - approval_required
+            - serial_required
+            - expiry_tracking
+            - custom_validation
+        rule_name:
+          type: string
+          maxLength: 255
+        rule_description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        rule_data:
+          type: object
+          description: Rule-specific configuration data
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+        is_inherited:
+          type: boolean
+          default: true
+        effective_from:
+          type: string
+          format: date-time
+          nullable: true
+        effective_to:
+          type: string
+          format: date-time
+          nullable: true
+        created_by:
+          type: integer
+          format: int64
+
+    ResponseMeta:
+      type: object
+      required:
+        - timestamp
+        - version
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:00Z"
+        version:
+          type: string
+          example: "1.0"
+        request_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    # Key-set Pagination Meta (MANDATORY)
+    PaginationMeta:
+      type: object
+      properties:
+        after_key:
+          type: string
+          description: Current page key-set marker
+          nullable: true
+        next_key:
+          type: string
+          description: Next page key-set marker
+          nullable: true
+        has_more:
+          type: boolean
+          description: More pages available
+        total_count:
+          type: integer
+          description: Total items (if calculable)
+          nullable: true
+
+
+  responses:
+    BadRequest:
+      description: Bad request - validation error
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+          examples:
+            validation_error:
+              value:
+                error:
+                  code: "VALIDATION_ERROR"
+                  message: "Request validation failed"
+                  details:
+                    - field: "name"
+                      issue: "Category name is required"
+
+    Unauthorized:
+      description: Authentication required
+      headers:
+        WWW-Authenticate:
+          description: Authentication challenge
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+          examples:
+            invalid_token:
+              value:
+                error:
+                  code: "INVALID_TOKEN"
+                  message: "The provided JWT token is invalid or expired"
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+          examples:
+            insufficient_permissions:
+              value:
+                error:
+                  code: "INSUFFICIENT_PERMISSIONS"
+                  message: "You do not have permission to access this resource"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+          examples:
+            category_not_found:
+              value:
+                error:
+                  code: "CATEGORY_NOT_FOUND"
+                  message: "Category with ID 789 not found"
+
+    Conflict:
+      description: Resource conflict
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+          examples:
+            duplicate_code:
+              value:
+                error:
+                  code: "DUPLICATE_CATEGORY_CODE"
+                  message: "A category with code 'ELEC' already exists"
+
+    PreconditionFailed:
+      description: Precondition failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    
+    UnprocessableEntity:
+      description: Unprocessable entity - Business rule violation
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+          examples:
+            business_rule_violation:
+              value:
+                error:
+                  code: "MAX_DEPTH_EXCEEDED"
+                  message: "Category hierarchy cannot exceed 5 levels"
+
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit-Org'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+        Retry-After:
+          description: Seconds to wait
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+          examples:
+            rate_limit_exceeded:
+              value:
+                error:
+                  code: "RATE_LIMIT_EXCEEDED"
+                  message: "API rate limit exceeded. Please retry after reset time."
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+          examples:
+            internal_error:
+              value:
+                error:
+                  code: "INTERNAL_ERROR"
+                  message: "An unexpected error occurred. Please try again later."
+                  request_id: "550e8400-e29b-41d4-a716-446655440000"
+
+  headers:
+    X-Request-ID:
+      description: UUID for request tracing
+      schema:
+        type: string
+        format: uuid
+    
+    # Multi-tenant headers
+    X-Organization-ID:
+      description: Organization identifier for multi-tenant context
+      schema:
+        type: integer
+        format: int64
+    X-Branch-ID:
+      description: Branch identifier within organization
+      schema:
+        type: integer
+        format: int64
+    X-Tenant-Context:
+      description: Combined tenant validation status
+      schema:
+        type: string
+        enum: [valid, invalid, expired]
+    
+    # Rate limiting headers (per-organization)
+    X-RateLimit-Limit-Org:
+      description: Per-organization rate limit ceiling
+      schema:
+        type: integer
+        example: 1000
+    X-RateLimit-Remaining:
+      description: Number of requests left for the organization time window
+      schema:
+        type: integer
+    X-RateLimit-Reset:
+      description: UTC timestamp when the organization rate limit resets
+      schema:
+        type: integer
+    
+    # Citus distribution headers
+    X-Citus-Shard-Count:
+      description: Number of active Citus shards for this organization
+      schema:
+        type: integer
+        example: 4
+    X-Citus-Colocated:
+      description: Whether query used co-located tables for performance
+      schema:
+        type: boolean
+        example: true
+    
+    # Apache Pulsar integration headers
+    X-Pulsar-Event-Published:
+      description: Pulsar event topic where event was published
+      schema:
+        type: string
+        example: "tenant-12345-category-updated"
+    X-Pulsar-Message-ID:
+      description: Pulsar message ID for event tracking
+      schema:
+        type: string
+        example: "CAESGgoMCLjV3b4GELq9rQIQAhgDIPj9_____wESAggA"
+    
+    # Dragonfly/Valkey caching headers
+    Cache-Control-Categories:
+      description: Cache control for category data
+      schema:
+        type: string
+        example: "public, max-age=600, s-maxage=300, stale-while-revalidate=60"
+    ETag:
+      description: Entity tag for cache validation
+      schema:
+        type: string
+        example: '"category-12345-v2-1642253400"'
+    X-Cache-Status:
+      description: Cache hit/miss status from Dragonfly
+      schema:
+        type: string
+        enum: [hit, miss, stale, updating]
+        example: "hit"
+    
+    # SmackFlow optimization headers
+    X-SmackFlow-Optimized:
+      description: Whether response used SmackFlow hybrid EFV optimization
+      schema:
+        type: boolean
+        example: true
+    X-SmackFlow-Cache-Strategy:
+      description: SmackFlow caching strategy applied
+      schema:
+        type: string
+        enum: [full_cache, partial_cache, no_cache, write_through]
+        example: "full_cache"
+    X-Content-Type-Options:
+      description: Prevent MIME type sniffing
+      schema:
+        type: string
+        default: nosniff
+    X-Frame-Options:
+      description: Clickjacking protection
+      schema:
+        type: string
+        default: DENY
+    Strict-Transport-Security:
+      description: Force HTTPS
+      schema:
+        type: string
+        default: max-age=31536000; includeSubDomains
+
+  examples:
+    CategoryListExample:
+      value:
+        data:
+          - category_id: 124
+            organization_id: 12345
+            branch_id: 1
+            name: "Electronics"
+            description: "Electronic components and devices"
+            parent_category_id: null
+            category_code: "ELEC"
+            path: "/124/"
+            depth: 0
+            status: "active"
+            sort_order: 10
+            is_leaf: false
+            child_count: 5
+            product_count: 150
+            total_product_count: 375
+            created_at: "2025-01-15T10:30:00Z"
+            created_by: 101
+          - category_id: 127
+            organization_id: 12345
+            branch_id: 1
+            name: "Mechanical Parts"
+            description: "Mechanical components and hardware"
+            parent_category_id: null
+            category_code: "MECH"
+            path: "/127/"
+            depth: 0
+            status: "active"
+            sort_order: 20
+            is_leaf: false
+            child_count: 8
+            product_count: 225
+            total_product_count: 425
+            created_at: "2025-01-15T11:00:00Z"
+            created_by: 101
+        meta:
+          timestamp: "2025-01-15T10:30:00Z"
+          version: "1.0"
+          request_id: "550e8400-e29b-41d4-a716-446655440000"
+        pagination:
+          total_count: 15
+          page_size: 20
+          next_page_token: null
+          has_more: false
+
+    CreateRootCategory:
+      value:
+        name: "Electronics"
+        description: "Electronic components and devices"
+        category_code: "ELEC"
+        parent_category_id: null
+        sort_order: 10
+        custom_attributes:
+          temperature_zone: "ambient"
+          hazmat_category: "none"
+        created_by: 101
+
+    CreateChildCategory:
+      value:
+        name: "Capacitors"
+        description: "Passive electronic components for energy storage"
+        category_code: "ELEC-CAP"
+        parent_category_id: 124
+        sort_order: 10
+        custom_attributes:
+          component_type: "passive"
+          voltage_rating_required: "true"
+        created_by: 101
+
+    CategoryTreeExample:
+      value:
+        data:
+          tree:
+            - category_id: 124
+              name: "Electronics"
+              category_code: "ELEC"
+              path: "/124/"
+              depth: 0
+              product_count: 150
+              total_product_count: 375
+              status: "active"
+              children:
+                - category_id: 125
+                  name: "Capacitors"
+                  category_code: "ELEC-CAP"
+                  path: "/124/125/"
+                  depth: 1
+                  product_count: 45
+                  total_product_count: 45
+                  status: "active"
+                  children: []
+                - category_id: 126
+                  name: "Resistors"
+                  category_code: "ELEC-RES"
+                  path: "/124/126/"
+                  depth: 1
+                  product_count: 38
+                  total_product_count: 38
+                  status: "active"
+                  children: []
+            - category_id: 127
+              name: "Mechanical Parts"
+              category_code: "MECH"
+              path: "/127/"
+              depth: 0
+              product_count: 225
+              total_product_count: 425
+              status: "active"
+              children:
+                - category_id: 128
+                  name: "Fasteners"
+                  category_code: "MECH-FAST"
+                  path: "/127/128/"
+                  depth: 1
+                  product_count: 89
+                  total_product_count: 89
+                  status: "active"
+                  children: []
+          total_categories: 8
+          max_depth: 2
+        meta:
+          timestamp: "2025-01-15T10:30:00Z"
+          version: "1.0"
+          request_id: "550e8400-e29b-41d4-a716-446655440000"

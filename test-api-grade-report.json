@@ -1,257 +1,450 @@
 {
-  "score": 4,
-  "letterGrade": "F",
+  "grade": {
+    "total": 46,
+    "letter": "F",
+    "compliancePct": 0.46,
+    "autoFailTriggered": false,
+    "criticalIssues": 1,
+    "perCategory": {
+      "functionality": {
+        "earned": 18.5,
+        "max": 30,
+        "percentage": 0.6166666666666667
+      },
+      "security": {
+        "earned": 15,
+        "max": 25,
+        "percentage": 0.6
+      },
+      "scalability": {
+        "earned": 4,
+        "max": 20,
+        "percentage": 0.2
+      },
+      "maintainability": {
+        "earned": 8,
+        "max": 15,
+        "percentage": 0.5333333333333333
+      },
+      "excellence": {
+        "earned": 0,
+        "max": 10,
+        "percentage": 0
+      }
+    },
+    "autoFailReasons": [],
+    "coverageBased": true,
+    "excellence": false,
+    "ruleScores": {
+      "FUNC-001": {
+        "coverage": 1,
+        "score": 10,
+        "maxPoints": 10,
+        "applicable": false,
+        "targetsChecked": 0,
+        "targetsPassed": 0
+      },
+      "FUNC-002": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 8,
+        "applicable": true,
+        "targetsChecked": 2,
+        "targetsPassed": 0
+      },
+      "FUNC-003": {
+        "coverage": 0.5,
+        "score": 3.5,
+        "maxPoints": 7,
+        "applicable": true,
+        "targetsChecked": 2,
+        "targetsPassed": 1
+      },
+      "FUNC-004": {
+        "coverage": 1,
+        "score": 5,
+        "maxPoints": 5,
+        "applicable": true,
+        "targetsChecked": 2,
+        "targetsPassed": 2
+      },
+      "SEC-001": {
+        "coverage": 1,
+        "score": 7,
+        "maxPoints": 7,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 1
+      },
+      "SEC-002": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 5,
+        "applicable": true,
+        "targetsChecked": 2,
+        "targetsPassed": 0
+      },
+      "SEC-003": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 5,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 0
+      },
+      "SEC-004": {
+        "coverage": 1,
+        "score": 8,
+        "maxPoints": 8,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 1
+      },
+      "SCALE-001": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 8,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 0
+      },
+      "SCALE-002": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 6,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 0
+      },
+      "SCALE-003": {
+        "coverage": 1,
+        "score": 4,
+        "maxPoints": 4,
+        "applicable": false,
+        "targetsChecked": 0,
+        "targetsPassed": 0
+      },
+      "SCALE-004": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 2,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 0
+      },
+      "MAINT-001": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 5,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 0
+      },
+      "MAINT-002": {
+        "coverage": 1,
+        "score": 5,
+        "maxPoints": 5,
+        "applicable": true,
+        "targetsChecked": 2,
+        "targetsPassed": 2
+      },
+      "MAINT-003": {
+        "coverage": 1,
+        "score": 3,
+        "maxPoints": 3,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 1
+      },
+      "MAINT-004": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 2,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 0
+      },
+      "EXCEL-001": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 3,
+        "applicable": true,
+        "targetsChecked": 2,
+        "targetsPassed": 0
+      },
+      "EXCEL-002": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 3,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 0
+      },
+      "EXCEL-003": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 2,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 0
+      },
+      "EXCEL-004": {
+        "coverage": 0,
+        "score": 0,
+        "maxPoints": 2,
+        "applicable": true,
+        "targetsChecked": 1,
+        "targetsPassed": 0
+      }
+    }
+  },
   "findings": [
     {
-      "checkpoint": "OAS-VERSION",
-      "passed": true
+      "ruleId": "EXCEL-001",
+      "message": "GET /resources: No response examples provided",
+      "severity": "minor",
+      "jsonPath": "$.paths['/resources'].get",
+      "category": "excellence"
     },
     {
-      "checkpoint": "MT-ORG-HDR",
-      "passed": true
+      "ruleId": "EXCEL-001",
+      "message": "POST /resources: No response examples provided",
+      "severity": "minor",
+      "jsonPath": "$.paths['/resources'].post",
+      "category": "excellence"
     },
     {
-      "checkpoint": "PAG-KEYSET",
-      "passed": false,
-      "message": "Found forbidden pagination param: offset"
+      "ruleId": "EXCEL-002",
+      "message": "API Info: No performance information provided",
+      "severity": "minor",
+      "jsonPath": "$.info",
+      "category": "excellence"
     },
     {
-      "checkpoint": "OAS-OPERATIONIDS",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "EXCEL-003",
+      "message": "API Specification: No advanced patterns used",
+      "severity": "minor",
+      "jsonPath": "$",
+      "category": "excellence"
     },
     {
-      "checkpoint": "OAS-NO-PLACEHOLDERS",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "EXCEL-004",
+      "message": "API Info: No deprecation strategy documented",
+      "severity": "minor",
+      "jsonPath": "$.info",
+      "category": "excellence"
     },
     {
-      "checkpoint": "OAS-VALID-SCHEMA",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "FUNC-002",
+      "message": "GET /resources: Error responses lack structured format",
+      "severity": "major",
+      "jsonPath": "$.paths['/resources'].get.responses",
+      "category": "functionality"
     },
     {
-      "checkpoint": "OAS-X-WEBHOOKS",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "FUNC-002",
+      "message": "POST /resources: Missing common error responses",
+      "severity": "major",
+      "jsonPath": "$.paths['/resources'].post.responses",
+      "category": "functionality"
     },
     {
-      "checkpoint": "SEC-OAUTH2-SCOPES",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "FUNC-003",
+      "message": "POST /resources: Success response not using response envelope pattern",
+      "severity": "major",
+      "jsonPath": "$.paths['/resources'].post.responses",
+      "category": "functionality"
     },
     {
-      "checkpoint": "SEC-PER-OP-SECURITY",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "MAINT-001",
+      "message": "/resources: Path must start with /api/v2/",
+      "severity": "minor",
+      "jsonPath": "$.paths['/resources']",
+      "category": "maintainability"
     },
     {
-      "checkpoint": "SEC-BEARER-JWT",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "MAINT-004",
+      "message": "POST /resources: Missing request examples",
+      "severity": "minor",
+      "jsonPath": "$.paths['/resources'].post",
+      "category": "maintainability"
     },
     {
-      "checkpoint": "SEC-APIKEY-RESTRICT",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "SCALE-001",
+      "message": "GET /resources: Missing key-set pagination parameters",
+      "severity": "critical",
+      "jsonPath": "$.paths['/resources'].get",
+      "category": "scalability"
     },
     {
-      "checkpoint": "SEC-WWW-AUTH",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "SCALE-002",
+      "message": "GET /resources: Missing caching headers",
+      "severity": "minor",
+      "jsonPath": "$.paths['/resources'].get",
+      "category": "scalability"
     },
     {
-      "checkpoint": "MT-BIGINT-UUID",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "SCALE-004",
+      "message": "POST /resources: Missing rate limit headers",
+      "severity": "minor",
+      "jsonPath": "$.paths['/resources'].post",
+      "category": "scalability"
     },
     {
-      "checkpoint": "MT-BRANCH-HDR",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "SEC-002",
+      "message": "GET /resources: Missing X-Branch-ID header",
+      "severity": "major",
+      "jsonPath": "$.paths['/resources'].get",
+      "category": "security"
     },
     {
-      "checkpoint": "MT-REQUEST-ID",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "SEC-002",
+      "message": "POST /resources: Missing X-Branch-ID header",
+      "severity": "major",
+      "jsonPath": "$.paths['/resources'].post",
+      "category": "security"
     },
     {
-      "checkpoint": "MT-W3C-TRACE",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "HTTP-STATUS-CODES",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "HTTP-428-PATCH-DELETE",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "HTTP-415-POST-PATCH",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "HTTP-503-GET",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "HTTP-409-VS-422",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "RATE-LIMIT-SUCCESS",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "CACHE-ETAG-GET",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "CACHE-CONDITIONAL",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "CACHE-304",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "CACHE-VARY",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "RESP-ENVELOPE",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "RESP-META-SCHEMA",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "RESP-HATEOAS",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "RESP-RFC7807",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "RESP-CONSISTENCY",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "PAG-TIE-BREAKER",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "PAG-FILTER",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "PAG-SPARSE-FIELDS",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "PAG-INCLUDE",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "ASYNC-202",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "ASYNC-JOB-STATUS",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "ASYNC-JOB-SCHEMA",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "ASYNC-IDEMPOTENCY",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "ASYNC-SEMANTICS",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "CONTENT-PATCH-TYPES",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "WEBHOOK-X-WEBHOOKS",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "WEBHOOK-HMAC",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "WEBHOOK-SECURITY",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "CONTENT-ACCEPT-LANG",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "DOC-BUSINESS-RULES",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "DOC-PERF-SLAS",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "DOC-TECH-STACK",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "DOC-GLOBAL-ERRORS",
-      "passed": false,
-      "message": "Not implemented in quick grader"
-    },
-    {
-      "checkpoint": "DOC-API-VERSION",
-      "passed": false,
-      "message": "Not implemented in quick grader"
+      "ruleId": "SEC-003",
+      "message": "POST /resources: No security requirements defined",
+      "severity": "major",
+      "jsonPath": "$.paths['/resources'].post",
+      "category": "security"
     }
   ],
-  "autoFails": [
-    "Must use key-set pagination, not offset/cursor"
-  ]
+  "checkpoints": [
+    {
+      "checkpoint_id": "FUNC-001",
+      "category": "functionality",
+      "max_points": 10,
+      "scored_points": 10
+    },
+    {
+      "checkpoint_id": "FUNC-002",
+      "category": "functionality",
+      "max_points": 8,
+      "scored_points": 0
+    },
+    {
+      "checkpoint_id": "FUNC-003",
+      "category": "functionality",
+      "max_points": 7,
+      "scored_points": 3.5
+    },
+    {
+      "checkpoint_id": "FUNC-004",
+      "category": "functionality",
+      "max_points": 5,
+      "scored_points": 5
+    },
+    {
+      "checkpoint_id": "SEC-001",
+      "category": "security",
+      "max_points": 7,
+      "scored_points": 7
+    },
+    {
+      "checkpoint_id": "SEC-002",
+      "category": "security",
+      "max_points": 5,
+      "scored_points": 0
+    },
+    {
+      "checkpoint_id": "SEC-003",
+      "category": "security",
+      "max_points": 5,
+      "scored_points": 0
+    },
+    {
+      "checkpoint_id": "SEC-004",
+      "category": "security",
+      "max_points": 8,
+      "scored_points": 8
+    },
+    {
+      "checkpoint_id": "SCALE-001",
+      "category": "scalability",
+      "max_points": 8,
+      "scored_points": 0
+    },
+    {
+      "checkpoint_id": "SCALE-002",
+      "category": "scalability",
+      "max_points": 6,
+      "scored_points": 0
+    },
+    {
+      "checkpoint_id": "SCALE-003",
+      "category": "scalability",
+      "max_points": 4,
+      "scored_points": 4
+    },
+    {
+      "checkpoint_id": "SCALE-004",
+      "category": "scalability",
+      "max_points": 2,
+      "scored_points": 0
+    },
+    {
+      "checkpoint_id": "MAINT-001",
+      "category": "maintainability",
+      "max_points": 5,
+      "scored_points": 0
+    },
+    {
+      "checkpoint_id": "MAINT-002",
+      "category": "maintainability",
+      "max_points": 5,
+      "scored_points": 5
+    },
+    {
+      "checkpoint_id": "MAINT-003",
+      "category": "maintainability",
+      "max_points": 3,
+      "scored_points": 3
+    },
+    {
+      "checkpoint_id": "MAINT-004",
+      "category": "maintainability",
+      "max_points": 2,
+      "scored_points": 0
+    },
+    {
+      "checkpoint_id": "EXCEL-001",
+      "category": "excellence",
+      "max_points": 3,
+      "scored_points": 0
+    },
+    {
+      "checkpoint_id": "EXCEL-002",
+      "category": "excellence",
+      "max_points": 3,
+      "scored_points": 0
+    },
+    {
+      "checkpoint_id": "EXCEL-003",
+      "category": "excellence",
+      "max_points": 2,
+      "scored_points": 0
+    },
+    {
+      "checkpoint_id": "EXCEL-004",
+      "category": "excellence",
+      "max_points": 2,
+      "scored_points": 0
+    }
+  ],
+  "metadata": {
+    "specHash": "cb6ab804bb1841638def7d59e282605afebb1dce0c3e0a70a9962de4e98161cd",
+    "templateHash": "abe2117a572a9dd7cd0c26170bce279f7ba431a9c28bfae1a4a0e9e4161c6e7d",
+    "rulesetHash": "none",
+    "templateVersion": "3.2.3",
+    "toolVersions": {
+      "grader": "2.0.0"
+    },
+    "scoringEngine": "coverage-based",
+    "instanceId": "b7786de7",
+    "instanceStartTime": "2025-08-11T03:00:34.446Z",
+    "gradedAt": "2025-08-11T03:00:34.564Z"
+  }
 }

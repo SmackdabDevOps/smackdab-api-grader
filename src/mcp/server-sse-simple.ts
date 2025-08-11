@@ -175,7 +175,12 @@ async function handleMcpMessage(message: any) {
               yamlContent = Buffer.from(args.content, 'base64').toString('utf-8');
             }
             const templatePath = args.templatePath || process.env.TEMPLATE_PATH || '/app/templates/MASTER_API_TEMPLATE_v3.yaml';
-            const result = await pipeline.gradeInline({ content: yamlContent, templatePath }, { progress: () => {} });
+            // Provide proper progress callback that gradeContract expects
+            const progressCallback = (stage: string, percent: number, note?: string) => {
+              // Could optionally send progress events via SSE if needed
+              console.log(`[${percent}%] ${stage}: ${note || ''}`);
+            };
+            const result = await pipeline.gradeInline({ content: yamlContent, templatePath }, { progress: progressCallback });
             response = { jsonrpc: '2.0', id: message.id, result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] } };
           } catch (error: any) {
             response = { jsonrpc: '2.0', id: message.id, error: { code: -32603, message: error.message } };
