@@ -1,5 +1,5 @@
 {
-  "name": "@smackdab/api-grader-mcp",
+  "name": "smackdab-api-grader-mcp",
   "version": "1.0.0",
   "description": "MCP client for Smackdab API Grader - connects Claude Desktop to the remote grading service",
   "main": "dist/index.js",

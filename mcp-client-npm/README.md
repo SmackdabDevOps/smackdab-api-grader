@@ -9,7 +9,7 @@ Connect Claude Desktop to the Smackdab API Grader service through the Model Cont
 Run directly with npx:
 
 ```bash
-npx @smackdab/api-grader-mcp
+npx smackdab-api-grader-mcp
 ```
 
 ### Global Installation
@@ -17,7 +17,7 @@ npx @smackdab/api-grader-mcp
 Install globally for easier access:
 
 ```bash
-npm install -g @smackdab/api-grader-mcp
+npm install -g smackdab-api-grader-mcp
 ```
 
 Then run:
@@ -39,7 +39,7 @@ Add the following to your Claude Desktop configuration file:
   "mcpServers": {
     "api-grader": {
       "command": "npx",
-      "args": ["@smackdab/api-grader-mcp"],
+      "args": ["smackdab-api-grader-mcp"],
       "env": {
         "API_GRADER_KEY": "your-api-key-here"
       }
@@ -140,7 +140,7 @@ If you're running your own instance of the API grader:
   "mcpServers": {
     "api-grader": {
       "command": "npx",
-      "args": ["@smackdab/api-grader-mcp"],
+      "args": ["smackdab-api-grader-mcp"],
       "env": {
         "API_GRADER_URL": "https://your-api.com",
         "API_GRADER_KEY": "your-api-key"
@@ -174,7 +174,7 @@ If you're running your own instance of the API grader:
 If you get permission errors, you may need to make the command executable:
 
 ```bash
-npm install -g @smackdab/api-grader-mcp
+npm install -g smackdab-api-grader-mcp
 which api-grader-mcp  # Find the installation path
 chmod +x /path/to/api-grader-mcp
 ```

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "api-grader": {
+      "command": "node",
+      "args": [
+        "/Users/brooksswift/Desktop/api-grader-mcp-starter/dist/mcp/server-sdk.js",
+        "--stdio"
+      ],
+      "env": {
+        "TEMPLATE_PATH": "/Users/brooksswift/Desktop/api-grader-mcp-starter/templates/MASTER_API_TEMPLATE_v3.yaml",
+        "USE_SQLITE": "true",
+        "DATABASE_PATH": "/Users/brooksswift/Desktop/api-grader-mcp-starter/data/grader.sqlite"
+      }
+    }
+  }
+}
