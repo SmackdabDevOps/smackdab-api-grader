@@ -48,7 +48,7 @@ rl.on('line', async (line) => {
             const parsed = JSON.parse(data);
             // Skip connection status messages
             if (parsed.type !== 'connection' && parsed.ok !== true) {
-              console.log(JSON.stringify(parsed));
+              process.stdout.write(JSON.stringify(parsed) + '\n');
             }
           } catch (e) {
             // Ignore parse errors
@@ -57,14 +57,14 @@ rl.on('line', async (line) => {
       }
     }
   } catch (error: any) {
-    console.error(JSON.stringify({
+    process.stdout.write(JSON.stringify({
       jsonrpc: '2.0',
       id: null,
       error: {
         code: -32603,
         message: error.message
       }
-    }));
+    }) + '\n');
   }
 });
 
