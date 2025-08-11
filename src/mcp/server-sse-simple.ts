@@ -7,6 +7,7 @@ const PORT = process.env.PORT || 3001;
 
 // Session support for GET-based SSE clients (e.g., some MCP transports)
 const sessions = new Map<string, { res: express.Response, keepAlive: NodeJS.Timeout }>();
+const sessionsByAuth = new Map<string, { id: string, res: express.Response }>();
 function genId() { return Math.random().toString(36).slice(2, 10); }
 
 // CORS for browser clients
@@ -38,14 +39,18 @@ app.get('/sse', async (req, res) => {
     'X-Accel-Buffering': 'no'
   });
   const id = genId();
+  const token = req.headers.authorization || '';
   const keepAlive = setInterval(() => {
     // comment line to keep connection alive
     res.write(': keep-alive\n\n');
   }, 15000);
   sessions.set(id, { res, keepAlive });
+  if (token) sessionsByAuth.set(token, { id, res });
   res.on('close', () => {
     clearInterval(keepAlive);
     sessions.delete(id);
+    const m = sessionsByAuth.get(token);
+    if (m && m.id === id) sessionsByAuth.delete(token);
   });
   // Announce connection and endpoint for POST messages
   res.write('event: connection\n');
@@ -73,44 +78,39 @@ app.post('/sse/message', express.text({ type: '*/*' }), async (req, res) => {
 
 // SSE endpoint - simplified direct implementation
 app.post('/sse', express.text({ type: '*/*' }), async (req, res) => {
-  console.log('SSE request received');
-  
   // Check auth
-  if (!checkAuth(req)) {
-    console.log('Auth failed');
-    return res.status(401).json({ error: 'Unauthorized' });
+  if (!checkAuth(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const token = req.headers.authorization || '';
+  const live = token ? sessionsByAuth.get(token) : undefined;
+  if (live) {
+    // Route response to the open GET stream associated with this token
+    try {
+      const message = JSON.parse(req.body || '{}');
+      const out = await handleMcpMessage(message);
+      live.res.write(`data: ${JSON.stringify(out)}\n\n`);
+      return res.json({ ok: true });
+    } catch (e:any) {
+      live.res.write(`data: ${JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error', data: String(e.message||e) } })}\n\n`);
+      return res.status(400).json({ error: 'Bad request' });
+    }
   }
-  
-  // Set SSE headers
+  // Fallback: one-shot POST responding via SSE in the POST response
+  console.log('SSE one-shot POST received (no live session)');
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
     'X-Accel-Buffering': 'no'
   });
-  
-  // Send connection established
   res.write('data: {"type":"connection","status":"established"}\n\n');
-  
   try {
-    const message = JSON.parse(req.body);
+    const message = JSON.parse(req.body || '{}');
     const out = await handleMcpMessage(message);
     res.write(`data: ${JSON.stringify(out)}\n\n`);
   } catch (error: any) {
-    console.error('Error processing message:', error);
-    const errorResponse = {
-      jsonrpc: '2.0',
-      id: (req.body as any)?.id || null,
-      error: {
-        code: -32700,
-        message: 'Parse error',
-        data: error.message
-      }
-    };
+    const errorResponse = { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error', data: error.message } };
     res.write(`data: ${JSON.stringify(errorResponse)}\n\n`);
   }
-  
-  // End the response (send done event for clients expecting a terminator)
   res.write('event: done\n');
   res.write('data: {"ok":true}\n\n');
   res.end();

@@ -55,7 +55,9 @@ export function initializeApiKeys() {
     });
     console.log(`Total API keys loaded: ${API_KEYS.size}`);
   } catch (error) {
-    console.error('Failed to parse API_KEYS:', error);
+    if (process.env.NODE_ENV !== 'test') {
+      console.error('Failed to parse API_KEYS:', error);
+    }
     // Add a default key for development
     if (process.env.NODE_ENV !== 'production') {
       const devKey = 'dev_' + crypto.randomBytes(16).toString('hex');
@@ -63,7 +65,9 @@ export function initializeApiKeys() {
         teamId: 'dev-team',
         userId: 'dev-user'
       });
-      console.log(`Development API key: ${devKey}`);
+      if (process.env.NODE_ENV !== 'test') {
+        console.log(`Development API key: ${devKey}`);
+      }
     }
   }
   
@@ -82,20 +86,29 @@ export function initializeApiKeys() {
 
 // Rate limiting map (in production, use Redis)
 const rateLimits = new Map<string, { count: number; resetTime: number }>();
-const RATE_LIMIT = parseInt(process.env.RATE_LIMIT || '100'); // requests per minute
 const RATE_WINDOW = 60000; // 1 minute in milliseconds
+
+// Helper function to get rate limit dynamically for testing
+function getRateLimit(): number {
+  const limit = parseInt(process.env.RATE_LIMIT || '100');
+  // Handle NaN case - default to 100 if parsing fails
+  return isNaN(limit) ? 100 : limit;
+}
 
 export function authenticateRequest(req: Request, res: Response, next: NextFunction) {
   console.log('=== Auth middleware called ===');
   console.log('Method:', req.method, 'Path:', req.path);
   console.log('Headers:', JSON.stringify(req.headers));
-  // Extract API key from headers
-  const authHeader = req.headers.authorization;
+  // Extract API key from headers (Express lowercases header names)
+  const authHeader = req.headers.authorization as string;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing or invalid authorization header' });
   }
 
   const apiKey = authHeader.substring(7);
+  if (!apiKey || apiKey.trim() === '') {
+    return res.status(401).json({ error: 'Invalid API key' });
+  }
   console.log(`Authenticating request with key: "${apiKey}"`);
   console.log(`Key length: ${apiKey.length}`);
   console.log(`Available keys in map:`);
@@ -113,10 +126,11 @@ export function authenticateRequest(req: Request, res: Response, next: NextFunct
   // Check rate limit
   const now = Date.now();
   const limit = rateLimits.get(keyData.teamId);
+  const rateLimit = getRateLimit();
   
   if (limit) {
     if (now < limit.resetTime) {
-      if (limit.count >= RATE_LIMIT) {
+      if (limit.count >= rateLimit) {
         const retryAfter = Math.ceil((limit.resetTime - now) / 1000);
         res.setHeader('Retry-After', retryAfter.toString());
         return res.status(429).json({ 
@@ -150,9 +164,20 @@ export function authenticateRequest(req: Request, res: Response, next: NextFunct
 
 // Helper to generate new API keys
 export function generateApiKey(teamId: string, userId: string): string {
-  const key = 'sk_' + crypto.randomBytes(24).toString('hex');
-  API_KEYS.set(key, { teamId, userId });
-  return key;
+  try {
+    const key = 'sk_' + crypto.randomBytes(24).toString('hex');
+    API_KEYS.set(key, { teamId, userId });
+    return key;
+  } catch (error) {
+    // Fallback for test environment where crypto might not be available
+    let randomHex = '';
+    while (randomHex.length < 48) {
+      randomHex += Math.random().toString(16).substring(2);
+    }
+    const key = 'sk_' + randomHex.substring(0, 48);
+    API_KEYS.set(key, { teamId, userId });
+    return key;
+  }
 }
 
 // Helper to revoke API keys
@@ -175,4 +200,9 @@ export function listTeamKeys(teamId: string): string[] {
 // Export for use in other modules
 export function getApiKeys(): Map<string, { teamId: string; userId: string }> {
   return API_KEYS;
+}
+
+// Export for testing - clear rate limits
+export function clearRateLimits(): void {
+  rateLimits.clear();
 }

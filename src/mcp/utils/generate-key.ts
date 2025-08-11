@@ -73,7 +73,7 @@ async function generateApiKey() {
     console.log(JSON.stringify({
       mcpServers: {
         "smackdab-api-grader": {
-          url: "https://your-app.railway.app/sse",
+          url: "https://your-app-domain.com/sse",
           transport: "sse",
           headers: {
             "Authorization": `Bearer ${apiKey}`

@@ -1,12 +1,30 @@
 {
   "mcpServers": {
-    "smackdab-api-grader": {
-      "command": "node",
+    "basic-api-grader": {
+      "command": "npx",
       "args": [
-        "/Users/brooksswift/Desktop/Smackdab/api-grader-mcp-starter/node_modules/.bin/tsx",
-        "/Users/brooksswift/Desktop/Smackdab/api-grader-mcp-starter/src/mcp/server.ts"
+        "tsx",
+        "/Users/brooksswift/Desktop/api-grader-mcp-starter/src/mcp/basic-server.ts"
+      ]
+    },
+    "remote-api-grader": {
+      "command": "npx",
+      "args": [
+        "tsx",
+        "/Users/brooksswift/Desktop/api-grader-mcp-starter/src/mcp/remote-grader.ts"
+      ]
+    },
+    "smackdab-grader": {
+      "command": "npx",
+      "args": [
+        "tsx",
+        "/Users/brooksswift/Desktop/api-grader-mcp-starter/src/mcp/full-grader.ts"
       ],
-      "env": {}
+      "env": {
+        "USE_REMOTE": "true",
+        "MCP_REMOTE_URL": "https://smackdab-api-grader.onrender.com",
+        "MCP_API_KEY": "sk_prod_001"
+      }
     }
   }
 }

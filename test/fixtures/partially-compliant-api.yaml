@@ -1,0 +1,190 @@
+openapi: "3.0.3"
+info:
+  title: "Partially Compliant API"
+  version: "1.0.0"
+  description: "API that meets some but not all requirements"
+
+servers:
+  - url: "https://api.example.com"
+    description: "Production server"
+
+# Has auth but not OAuth2
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+      description: "API Key authentication"
+  
+  schemas:
+    Product:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+          minimum: 0
+    
+    ProductList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+        # Has pagination but wrong format - should be keyset
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+    
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: object
+
+security:
+  - ApiKey: []
+
+paths:
+  # Good: Has namespace but wrong format - should be /api/v2/<domain>
+  /api/v1/products:
+    get:
+      summary: "Get products"
+      description: "Retrieve list of products"
+      operationId: "getProducts"
+      parameters:
+        # Missing X-Organization-ID header (auto-fail rule)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: "Products retrieved successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductList"
+        '400':
+          description: "Bad request"
+          content:
+            # Wrong content type - should be application/problem+json
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '401':
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - ApiKey: []
+    
+    post:
+      summary: "Create product"
+      description: "Create a new product"
+      operationId: "createProduct"
+      # Missing X-Organization-ID header (auto-fail rule)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                price:
+                  type: number
+                  format: float
+                  minimum: 0
+      responses:
+        '201':
+          description: "Product created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        '400':
+          description: "Bad request"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '401':
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - ApiKey: []
+
+  /api/v1/products/{id}:
+    get:
+      summary: "Get product by ID"
+      description: "Retrieve a specific product"
+      operationId: "getProductById"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Product retrieved"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        '404':
+          description: "Product not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - ApiKey: []

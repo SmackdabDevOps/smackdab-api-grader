@@ -1,0 +1,540 @@
+/**
+ * Integration tests for complete authentication flows
+ * Tests end-to-end authentication scenarios including:
+ * - SSE server authentication flows
+ * - MCP protocol authentication
+ * - Multi-tenant security validation
+ * - Cross-service authentication
+ * - Security headers and CORS
+ */
+
+import request from 'supertest';
+import express from 'express';
+import { Server } from 'http';
+import { initializeApiKeys, getApiKeys } from '../../src/mcp/auth';
+
+// Mock the SSE server for integration testing
+function createTestServer(): express.Application {
+  const app = express();
+  
+  // Import auth middleware for testing
+  const { authenticateRequest } = require('../../src/mcp/auth');
+  
+  // Enable CORS
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(200);
+    } else {
+      next();
+    }
+  });
+
+  // Parse JSON bodies
+  app.use(express.json());
+  app.use(express.text({ type: '*/*' }));
+
+  // Health check endpoint (no auth required)
+  app.get('/health', (req, res) => {
+    res.json({ status: 'healthy', version: '1.3.0' });
+  });
+
+  // Protected endpoints that require authentication
+  app.use('/api', authenticateRequest);
+  
+  app.get('/api/version', (req, res) => {
+    res.json({
+      version: '1.3.0',
+      user: req.user
+    });
+  });
+
+  app.post('/api/test-endpoint', (req, res) => {
+    res.json({
+      message: 'Test endpoint success',
+      user: req.user,
+      body: req.body
+    });
+  });
+
+  // SSE endpoint simulation
+  app.get('/sse', (req, res) => {
+    // Simple auth check
+    const auth = req.headers.authorization;
+    if (auth !== 'Bearer sk_test_integration_key') {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+
+    res.write('event: connection\n');
+    res.write('data: {"type":"connection","status":"established"}\n\n');
+    
+    // Keep connection alive briefly for testing
+    const keepAlive = setInterval(() => {
+      res.write(': keep-alive\n\n');
+    }, 100);
+
+    setTimeout(() => {
+      clearInterval(keepAlive);
+      res.write('event: done\n');
+      res.write('data: {"ok":true}\n\n');
+      res.end();
+    }, 500);
+  });
+
+  // Error handling
+  app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('Test server error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  });
+
+  return app;
+}
+
+describe('Authentication Flow Integration', () => {
+  let app: express.Application;
+  let server: Server;
+  let originalEnv: NodeJS.ProcessEnv;
+
+  beforeAll(async () => {
+    originalEnv = { ...process.env };
+    
+    // Setup test environment
+    process.env.NODE_ENV = 'test';
+    process.env.RATE_LIMIT = '100'; // High limit for integration tests
+    process.env.API_KEYS = JSON.stringify({
+      'sk_test_integration_key': {
+        teamId: 'integration-team',
+        userId: 'integration-user'
+      },
+      'sk_test_team_alpha_key': {
+        teamId: 'team-alpha',
+        userId: 'alpha-user'
+      },
+      'sk_test_team_beta_key': {
+        teamId: 'team-beta',
+        userId: 'beta-user'
+      }
+    });
+
+    // Initialize auth system - directly set keys instead of using initializeApiKeys()
+    const keys = getApiKeys();
+    keys.clear();
+    keys.set('sk_test_integration_key', {
+      teamId: 'integration-team',
+      userId: 'integration-user'
+    });
+    keys.set('sk_test_team_alpha_key', {
+      teamId: 'team-alpha',
+      userId: 'alpha-user'
+    });
+    keys.set('sk_test_team_beta_key', {
+      teamId: 'team-beta',
+      userId: 'beta-user'
+    });
+
+    // Create test server
+    app = createTestServer();
+    
+    // Start server for integration tests
+    server = app.listen(0); // Use random port
+  });
+
+  afterAll(async () => {
+    if (server) {
+      server.close();
+    }
+    process.env = originalEnv;
+  });
+
+  describe('Public Endpoints', () => {
+    test('should allow access to health endpoint without authentication', async () => {
+      const response = await request(app)
+        .get('/health')
+        .expect(200);
+
+      expect(response.body).toEqual({
+        status: 'healthy',
+        version: '1.3.0'
+      });
+    });
+
+    test('should handle OPTIONS requests for CORS preflight', async () => {
+      const response = await request(app)
+        .options('/api/version')
+        .expect(200);
+
+      expect(response.headers['access-control-allow-origin']).toBe('*');
+      expect(response.headers['access-control-allow-methods']).toBe('GET, POST, OPTIONS');
+      expect(response.headers['access-control-allow-headers']).toBe('Content-Type, Authorization');
+    });
+  });
+
+  describe('Protected Endpoints', () => {
+    test('should successfully authenticate valid API key', async () => {
+      const response = await request(app)
+        .get('/api/version')
+        .set('Authorization', 'Bearer sk_test_integration_key')
+        .expect(200);
+
+      expect(response.body.version).toBe('1.3.0');
+      expect(response.body.user).toEqual({
+        teamId: 'integration-team',
+        userId: 'integration-user',
+        apiKey: 'sk_test_integration_key'
+      });
+    });
+
+    test('should reject request without authorization header', async () => {
+      const response = await request(app)
+        .get('/api/version')
+        .expect(401);
+
+      expect(response.body).toEqual({
+        error: 'Missing or invalid authorization header'
+      });
+    });
+
+    test('should reject invalid API key', async () => {
+      const response = await request(app)
+        .get('/api/version')
+        .set('Authorization', 'Bearer sk_test_invalid_key')
+        .expect(401);
+
+      expect(response.body).toEqual({
+        error: 'Invalid API key'
+      });
+    });
+
+    test('should reject non-Bearer authorization', async () => {
+      const response = await request(app)
+        .get('/api/version')
+        .set('Authorization', 'Basic dGVzdDp0ZXN0')
+        .expect(401);
+
+      expect(response.body).toEqual({
+        error: 'Missing or invalid authorization header'
+      });
+    });
+
+    test('should handle POST requests with authentication', async () => {
+      const testData = { test: 'data', number: 42 };
+      
+      const response = await request(app)
+        .post('/api/test-endpoint')
+        .set('Authorization', 'Bearer sk_test_integration_key')
+        .send(testData)
+        .expect(200);
+
+      expect(response.body.message).toBe('Test endpoint success');
+      expect(response.body.user.teamId).toBe('integration-team');
+      expect(response.body.body).toEqual(testData);
+    });
+  });
+
+  describe('Multi-Tenant Isolation', () => {
+    test('should maintain separate contexts for different teams', async () => {
+      // Team Alpha request
+      const alphaResponse = await request(app)
+        .get('/api/version')
+        .set('Authorization', 'Bearer sk_test_team_alpha_key')
+        .expect(200);
+
+      expect(alphaResponse.body.user.teamId).toBe('team-alpha');
+      expect(alphaResponse.body.user.userId).toBe('alpha-user');
+
+      // Team Beta request
+      const betaResponse = await request(app)
+        .get('/api/version')
+        .set('Authorization', 'Bearer sk_test_team_beta_key')
+        .expect(200);
+
+      expect(betaResponse.body.user.teamId).toBe('team-beta');
+      expect(betaResponse.body.user.userId).toBe('beta-user');
+
+      // Verify isolation
+      expect(alphaResponse.body.user.teamId).not.toBe(betaResponse.body.user.teamId);
+    });
+
+    test('should not leak data between concurrent team requests', async () => {
+      const requests = [
+        request(app)
+          .get('/api/version')
+          .set('Authorization', 'Bearer sk_test_team_alpha_key'),
+        request(app)
+          .get('/api/version')
+          .set('Authorization', 'Bearer sk_test_team_beta_key'),
+        request(app)
+          .get('/api/version')
+          .set('Authorization', 'Bearer sk_test_team_alpha_key')
+      ];
+
+      const responses = await Promise.all(requests);
+
+      // All should succeed
+      responses.forEach(response => {
+        expect(response.status).toBe(200);
+      });
+
+      // Check team isolation
+      expect(responses[0].body.user.teamId).toBe('team-alpha');
+      expect(responses[1].body.user.teamId).toBe('team-beta');
+      expect(responses[2].body.user.teamId).toBe('team-alpha');
+    });
+  });
+
+  describe('Rate Limiting Integration', () => {
+    beforeEach(() => {
+      // Reset rate limits by clearing and reinitializing with low limits
+      getApiKeys().clear();
+      process.env.RATE_LIMIT = '3'; // Low limit for rate limit testing
+      initializeApiKeys();
+    });
+
+    afterEach(() => {
+      // Restore higher rate limit
+      getApiKeys().clear();
+      process.env.RATE_LIMIT = '100';
+      initializeApiKeys();
+    });
+
+    test('should enforce rate limits across requests', async () => {
+      // Make requests up to limit
+      for (let i = 0; i < 3; i++) {
+        const response = await request(app)
+          .get('/api/version')
+          .set('Authorization', 'Bearer sk_test_integration_key')
+          .expect(200);
+        
+        expect(response.body.user.teamId).toBe('integration-team');
+      }
+
+      // Next request should be rate limited
+      const rateLimitedResponse = await request(app)
+        .get('/api/version')
+        .set('Authorization', 'Bearer sk_test_integration_key')
+        .expect(429);
+
+      expect(rateLimitedResponse.body).toEqual({
+        error: 'Rate limit exceeded',
+        retryAfter: 60
+      });
+      expect(rateLimitedResponse.headers['retry-after']).toBe('60');
+    });
+
+    test('should maintain separate rate limits per team', async () => {
+      // Team Alpha exhausts their limit
+      for (let i = 0; i < 3; i++) {
+        await request(app)
+          .get('/api/version')
+          .set('Authorization', 'Bearer sk_test_team_alpha_key')
+          .expect(200);
+      }
+
+      // Team Alpha should be rate limited
+      await request(app)
+        .get('/api/version')
+        .set('Authorization', 'Bearer sk_test_team_alpha_key')
+        .expect(429);
+
+      // Team Beta should still work
+      const betaResponse = await request(app)
+        .get('/api/version')
+        .set('Authorization', 'Bearer sk_test_team_beta_key')
+        .expect(200);
+
+      expect(betaResponse.body.user.teamId).toBe('team-beta');
+    });
+  });
+
+  describe('SSE Authentication Flow', () => {
+    test('should authenticate SSE connection', async () => {
+      const response = await request(app)
+        .get('/sse')
+        .set('Authorization', 'Bearer sk_test_integration_key')
+        .expect(200);
+
+      expect(response.headers['content-type']).toBe('text/event-stream');
+      expect(response.headers['cache-control']).toBe('no-cache');
+      expect(response.headers['connection']).toBe('keep-alive');
+      
+      // Check SSE events
+      const eventData = response.text;
+      expect(eventData).toContain('event: connection');
+      expect(eventData).toContain('data: {"type":"connection","status":"established"}');
+    });
+
+    test('should reject unauthorized SSE connection', async () => {
+      const response = await request(app)
+        .get('/sse')
+        .expect(401);
+
+      expect(response.body).toEqual({
+        error: 'Unauthorized'
+      });
+    });
+
+    test('should reject SSE connection with invalid key', async () => {
+      const response = await request(app)
+        .get('/sse')
+        .set('Authorization', 'Bearer sk_invalid_key')
+        .expect(401);
+
+      expect(response.body).toEqual({
+        error: 'Unauthorized'
+      });
+    });
+  });
+
+  describe('Security Headers', () => {
+    test('should set proper CORS headers', async () => {
+      const response = await request(app)
+        .get('/health')
+        .expect(200);
+
+      expect(response.headers['access-control-allow-origin']).toBe('*');
+      expect(response.headers['access-control-allow-methods']).toBe('GET, POST, OPTIONS');
+      expect(response.headers['access-control-allow-headers']).toBe('Content-Type, Authorization');
+    });
+
+    test('should set proper SSE headers', async () => {
+      const response = await request(app)
+        .get('/sse')
+        .set('Authorization', 'Bearer sk_test_integration_key')
+        .expect(200);
+
+      expect(response.headers['content-type']).toBe('text/event-stream');
+      expect(response.headers['cache-control']).toBe('no-cache');
+      expect(response.headers['connection']).toBe('keep-alive');
+      expect(response.headers['x-accel-buffering']).toBe('no');
+    });
+
+    test('should handle content-type variations', async () => {
+      // Test with JSON content-type
+      const jsonResponse = await request(app)
+        .post('/api/test-endpoint')
+        .set('Authorization', 'Bearer sk_test_integration_key')
+        .set('Content-Type', 'application/json')
+        .send({ test: 'json' })
+        .expect(200);
+
+      expect(jsonResponse.body.body).toEqual({ test: 'json' });
+
+      // Test with text content-type
+      const textResponse = await request(app)
+        .post('/api/test-endpoint')
+        .set('Authorization', 'Bearer sk_test_integration_key')
+        .set('Content-Type', 'text/plain')
+        .send('plain text data')
+        .expect(200);
+
+      expect(textResponse.body.body).toBe('plain text data');
+    });
+  });
+
+  describe('Error Handling', () => {
+    test('should handle malformed JSON gracefully', async () => {
+      const response = await request(app)
+        .post('/api/test-endpoint')
+        .set('Authorization', 'Bearer sk_test_integration_key')
+        .set('Content-Type', 'application/json')
+        .send('{ invalid json }')
+        .expect(400);
+    });
+
+    test('should handle missing authorization header gracefully', async () => {
+      const response = await request(app)
+        .get('/api/version')
+        .expect(401);
+
+      expect(response.body).toEqual({
+        error: 'Missing or invalid authorization header'
+      });
+    });
+
+    test('should handle concurrent requests without errors', async () => {
+      const concurrentRequests = Array.from({ length: 10 }, () =>
+        request(app)
+          .get('/api/version')
+          .set('Authorization', 'Bearer sk_test_integration_key')
+      );
+
+      const responses = await Promise.all(concurrentRequests);
+
+      responses.forEach(response => {
+        expect(response.status).toBe(200);
+        expect(response.body.user.teamId).toBe('integration-team');
+      });
+    });
+  });
+
+  describe('Authentication Edge Cases', () => {
+    test('should handle Authorization header case variations', async () => {
+      // Test lowercase
+      const lowerResponse = await request(app)
+        .get('/api/version')
+        .set('authorization', 'Bearer sk_test_integration_key')
+        .expect(200);
+
+      expect(lowerResponse.body.user.teamId).toBe('integration-team');
+    });
+
+    test('should handle whitespace in Authorization header', async () => {
+      const response = await request(app)
+        .get('/api/version')
+        .set('Authorization', '  Bearer   sk_test_integration_key  ')
+        .expect(401); // Should fail due to extra whitespace
+
+      expect(response.body).toEqual({
+        error: 'Invalid API key'
+      });
+    });
+
+    test('should handle empty Authorization header', async () => {
+      const response = await request(app)
+        .get('/api/version')
+        .set('Authorization', '')
+        .expect(401);
+
+      expect(response.body).toEqual({
+        error: 'Missing or invalid authorization header'
+      });
+    });
+
+    test('should handle very long API keys', async () => {
+      const longKey = 'sk_' + 'a'.repeat(1000);
+      
+      const response = await request(app)
+        .get('/api/version')
+        .set('Authorization', `Bearer ${longKey}`)
+        .expect(401);
+
+      expect(response.body).toEqual({
+        error: 'Invalid API key'
+      });
+    });
+
+    test('should handle special characters in API key attempts', async () => {
+      const specialChars = ['<script>', 'DROP TABLE', "'; --", '\x00\x01\x02'];
+      
+      for (const chars of specialChars) {
+        const response = await request(app)
+          .get('/api/version')
+          .set('Authorization', `Bearer sk_test_${chars}`)
+          .expect(401);
+
+        expect(response.body).toEqual({
+          error: 'Invalid API key'
+        });
+      }
+    });
+  });
+});

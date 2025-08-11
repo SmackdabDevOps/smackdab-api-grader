@@ -30,7 +30,7 @@ export class GraderDB {
   private pool: Pool;
 
   constructor() {
-    // Use DATABASE_URL from Railway or fallback to components
+    // Use DATABASE_URL from environment or fallback to components
     const connectionString = process.env.DATABASE_URL || 
       `postgresql://${process.env.PGUSER}:${process.env.PGPASSWORD}@${process.env.PGHOST}:${process.env.PGPORT}/${process.env.PGDATABASE}`;
     

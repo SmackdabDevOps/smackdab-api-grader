@@ -98,5 +98,5 @@ export function checkTenancy(spec:any){
   // Auto-fail if any org header missing anywhere
   const autoFail = !orgOk;
 
-  return { findings, score: { security: { add: scoreAdd, max: scoreMax } }, autoFailReasons: autoFail ? ['Missing X-Organization-ID on one or more operations'] : [] };
+  return { findings, score: { tenancy: { add: scoreAdd, max: scoreMax } }, autoFailReasons: autoFail ? ['Missing X-Organization-ID on one or more operations'] : [] };
 }

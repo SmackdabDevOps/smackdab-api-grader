@@ -1,0 +1,429 @@
+openapi: "3.0.3"
+info:
+  title: "Smackdab User Management API"
+  version: "1.2.0"
+  description: "Multi-tenant user management API following Smackdab standards"
+  contact:
+    name: "API Support"
+    email: "support@smackdab.com"
+  license:
+    name: "MIT"
+    url: "https://opensource.org/licenses/MIT"
+  x-smackdab-tenancy: true
+  x-smackdab-version: "2.0"
+
+servers:
+  - url: "https://api.smackdab.com/v1"
+    description: "Production server"
+  - url: "https://staging-api.smackdab.com/v1"
+    description: "Staging server"
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "JWT token containing organization and branch context"
+
+  schemas:
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - organizationId
+        - branchId
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Unique user identifier"
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          description: "User email address"
+          example: "user@example.com"
+        organizationId:
+          type: string
+          format: uuid
+          description: "Organization identifier for tenant isolation"
+          example: "org-550e8400-e29b-41d4-a716-446655440000"
+        branchId:
+          type: string
+          format: uuid
+          description: "Branch identifier for tenant isolation"
+          example: "branch-550e8400-e29b-41d4-a716-446655440000"
+        firstName:
+          type: string
+          description: "User's first name"
+          example: "John"
+        lastName:
+          type: string
+          description: "User's last name"
+          example: "Doe"
+        createdAt:
+          type: string
+          format: date-time
+          description: "User creation timestamp"
+          example: "2024-01-01T00:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: "User last update timestamp"
+          example: "2024-01-01T00:00:00Z"
+
+    UserList:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    PaginationMeta:
+      type: object
+      required:
+        - page
+        - perPage
+        - total
+        - totalPages
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          description: "Current page number"
+          example: 1
+        perPage:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: "Items per page"
+          example: 20
+        total:
+          type: integer
+          minimum: 0
+          description: "Total number of items"
+          example: 150
+        totalPages:
+          type: integer
+          minimum: 0
+          description: "Total number of pages"
+          example: 8
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: "Error code"
+              example: "USER_NOT_FOUND"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "User not found"
+            details:
+              type: object
+              description: "Additional error details"
+
+paths:
+  /organizations/{organizationId}/branches/{branchId}/users:
+    get:
+      summary: "Get users for organization and branch"
+      description: "Retrieve paginated list of users within tenant context"
+      operationId: "getUsers"
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "Organization identifier"
+          example: "org-550e8400-e29b-41d4-a716-446655440000"
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "Branch identifier"
+          example: "branch-550e8400-e29b-41d4-a716-446655440000"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: "Page number for pagination"
+        - name: perPage
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: "Items per page"
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+          description: "Search query for filtering users"
+      responses:
+        '200':
+          description: "List of users retrieved successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserList"
+              examples:
+                success:
+                  summary: "Successful user list response"
+                  value:
+                    data:
+                      - id: "550e8400-e29b-41d4-a716-446655440000"
+                        email: "user@example.com"
+                        organizationId: "org-550e8400-e29b-41d4-a716-446655440000"
+                        branchId: "branch-550e8400-e29b-41d4-a716-446655440000"
+                        firstName: "John"
+                        lastName: "Doe"
+                        createdAt: "2024-01-01T00:00:00Z"
+                        updatedAt: "2024-01-01T00:00:00Z"
+                    meta:
+                      page: 1
+                      perPage: 20
+                      total: 1
+                      totalPages: 1
+        '400':
+          description: "Invalid request parameters"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '401':
+          description: "Authentication required"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '403':
+          description: "Access forbidden - tenant isolation violation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - bearerAuth: []
+
+    post:
+      summary: "Create new user"
+      description: "Create a new user within tenant context"
+      operationId: "createUser"
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "Organization identifier"
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "Branch identifier"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - firstName
+                - lastName
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: "User email address"
+                firstName:
+                  type: string
+                  description: "User's first name"
+                lastName:
+                  type: string
+                  description: "User's last name"
+            examples:
+              createUser:
+                summary: "Create user request"
+                value:
+                  email: "newuser@example.com"
+                  firstName: "Jane"
+                  lastName: "Smith"
+      responses:
+        '201':
+          description: "User created successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        '400':
+          description: "Invalid request data"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '401':
+          description: "Authentication required"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '403':
+          description: "Access forbidden"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '409':
+          description: "User already exists"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - bearerAuth: []
+
+  /organizations/{organizationId}/branches/{branchId}/users/{userId}:
+    get:
+      summary: "Get user by ID"
+      description: "Retrieve a specific user within tenant context"
+      operationId: "getUserById"
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "Organization identifier"
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "Branch identifier"
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "User identifier"
+      responses:
+        '200':
+          description: "User retrieved successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        '400':
+          description: "Invalid user ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '401':
+          description: "Authentication required"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '403':
+          description: "Access forbidden"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '404':
+          description: "User not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - bearerAuth: []
+
+  /health:
+    get:
+      summary: "Health check endpoint"
+      description: "Check service health status"
+      operationId: "getHealth"
+      responses:
+        '200':
+          description: "Service is healthy"
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - timestamp
+                properties:
+                  status:
+                    type: string
+                    enum: ["healthy"]
+                    description: "Service health status"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    description: "Health check timestamp"
+              examples:
+                healthy:
+                  summary: "Healthy service response"
+                  value:
+                    status: "healthy"
+                    timestamp: "2024-01-01T00:00:00Z"
+      security: []

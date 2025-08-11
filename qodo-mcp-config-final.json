@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "smackdab-grader": {
+      "command": "npx",
+      "args": [
+        "tsx",
+        "/Users/brooksswift/Desktop/api-grader-mcp-starter/src/mcp/full-grader.ts"
+      ],
+      "env": {
+        "USE_REMOTE": "true",
+        "MCP_REMOTE_URL": "https://smackdab-api-grader.onrender.com",
+        "MCP_API_KEY": "sk_prod_001"
+      }
+    }
+  }
+}

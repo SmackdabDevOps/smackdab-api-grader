@@ -1,0 +1,66 @@
+openapi: "3.0.3"
+info:
+  title: "Circular Reference API"
+  version: "1.0.0"
+  description: "API with circular schema references for testing"
+
+paths:
+  /organizations/{orgId}/branches/{branchId}/nodes:
+    get:
+      operationId: "getNodes"
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Node"
+
+components:
+  schemas:
+    Node:
+      type: object
+      required:
+        - id
+        - type
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: ["parent", "child", "sibling"]
+        data:
+          type: object
+          additionalProperties: true
+        # Circular reference to parent
+        parent:
+          $ref: "#/components/schemas/Node"
+        # Circular reference to children
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/Node"
+        # Circular reference to siblings
+        siblings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Node"
+        # Self-reference
+        reference:
+          $ref: "#/components/schemas/Node"

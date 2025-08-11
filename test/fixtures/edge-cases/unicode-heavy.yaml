@@ -1,0 +1,278 @@
+openapi: "3.0.3"
+info:
+  title: "🌍 Iñtërnâtiônàl API with Ünicödé 中文 العربية Русский 日本語 🚀"
+  version: "1.0.0"
+  description: |
+    API testing various Unicode characters and international support:
+    - Émojis: 🎉 💻 🌟 ✅ ❌ 📊 🔍 🚀
+    - Âccëntëd châractërs: àáâãäåæçèéêëìíîïñòóôõöøùúûüýÿ
+    - Çyrillic: Русский текст для тестирования
+    - 中文測試: 这是中文测试内容
+    - العربية: هذا نص تجريبي بالعربية
+    - 日本語テスト: これは日本語のテストです
+    - Symbols: ∞ ∑ π √ ∂ ∫ ≈ ≠ ≤ ≥ ± × ÷ ° µ
+    - Currency: $ € £ ¥ ¢ ₹ ₽ ₿
+    - Mathematical: ∀ ∃ ∅ ∈ ∉ ∩ ∪ ⊆ ⊇ ⊂ ⊃
+
+servers:
+  - url: "https://iñtërnâtiônàl-âpi.èxámplë.com"
+    description: "Iñtërnâtiônàl sërvër with spëciàl chàràctërs"
+
+paths:
+  /organizations/{orgId}/branches/{branchId}/ünicödë-tëst:
+    get:
+      operationId: "getÜnicödëTëst"
+      summary: "Gët ünicödë tëst dâtâ 获取测试数据"
+      description: |
+        Rétrîëvë ünicödë tëst dâtâ wîth îñtërnâtîönâl süppört
+        支持国际字符的测试端点
+        نقطة نهاية الاختبار مع دعم Unicode
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: "lângüâgë-fîltër"
+          in: query
+          description: "Fîltër by lângüâgë 语言筛选"
+          schema:
+            type: string
+            enum:
+              - "english"
+              - "français"
+              - "español" 
+              - "português"
+              - "italiano"
+              - "deutsch"
+              - "русский"
+              - "中文"
+              - "日本語"
+              - "العربية"
+              - "한국어"
+        - name: "émöjî-möde"
+          in: query
+          description: "Énâblë émöjî môdë 🎉"
+          schema:
+            type: boolean
+            default: false
+        - name: "spëciâl-chârs"
+          in: query
+          description: "Tëst spëciâl châràctërs: !@#$%^&*()_+-=[]{}|;':\",./<>?"
+          schema:
+            type: string
+            pattern: "^[\\w\\s\\p{L}\\p{M}\\p{S}\\p{P}]*$"
+      responses:
+        '200':
+          description: "Süccëssful rëspönsë with ünicödë dâtâ 成功响应"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ÜnicödëRëspönsë"
+              examples:
+                multilingual:
+                  summary: "Mültîlîngüâl ëxâmplë"
+                  value:
+                    message: "Hëllö Wörld! 你好世界！ مرحبا بالعالم! Привет мир!"
+                    data:
+                      english: "Hello World"
+                      chinese: "你好世界"
+                      arabic: "مرحبا بالعالم"
+                      russian: "Привет мир"
+                      japanese: "こんにちは世界"
+                      korean: "안녕하세요 세계"
+                      emoji: "🌍🌎🌏"
+        '400':
+          description: "Bâd rëqüëst - învâlîd ünicödë"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Învâlîd ünicödë châràctërs în rëqüëst"
+
+  /organizations/{orgId}/branches/{branchId}/émöjî-tëst/{émöjî-îd}:
+    post:
+      operationId: "createÉmöjîTëst"
+      summary: "Crëâtë émöjî tëst ëntry 创建表情测试"
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: "émöjî-îd"
+          in: path
+          required: true
+          description: "Émöjî îdëntîfîër: 🎉📊💻🚀"
+          schema:
+            type: string
+            pattern: "^[\\p{Emoji}\\p{Emoji_Presentation}\\p{Extended_Pictographic}]+$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ÉmöjîRëqüëst"
+            examples:
+              celebration:
+                summary: "Cëlëbrâtîön émöjîs"
+                value:
+                  title: "Cëlëbrâtîön Évënt 🎉"
+                  description: "À spëciâl cëlëbrâtîön with émöjîs âñd ünicödë!"
+                  emojis: ["🎉", "🎊", "🥳", "🎈", "🎁"]
+                  tags: ["célébration", "fête", "祝贺", "احتفال"]
+      responses:
+        '201':
+          description: "Émöjî tëst crëâtëd süccëssfüllÿ"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ÉmöjîRëspönsë"
+
+components:
+  schemas:
+    ÜnicödëRëspönsë:
+      type: object
+      required:
+        - îd
+        - mëssâgë
+        - dâtâ
+      properties:
+        îd:
+          type: string
+          format: uuid
+          description: "Üñîqüë îdëñtîfîër"
+        mëssâgë:
+          type: string
+          description: "Mültîlîñgüâl mëssâgë"
+          example: "Hëllö fröm thë API! 你好来自API！"
+        dâtâ:
+          type: object
+          properties:
+            translations:
+              type: object
+              additionalProperties:
+                type: string
+              example:
+                en: "Hello"
+                fr: "Bonjour"
+                es: "Hola"
+                de: "Hallo"
+                ru: "Привет"
+                zh: "你好"
+                ja: "こんにちは"
+                ar: "مرحبا"
+            spëciâl_chârs:
+              type: string
+              description: "Tëst öf spëciâl châràctërs"
+              example: "!@#$%^&*()_+-=[]{}|;':\",./<>?àáâãäåæçèéêë"
+            mâth_syñbols:
+              type: array
+              items:
+                type: string
+              example: ["∞", "∑", "π", "√", "∂", "∫", "≈", "≠", "≤", "≥"]
+            cürrëñcy:
+              type: array
+              items:
+                type: string
+              example: ["$", "€", "£", "¥", "¢", "₹", "₽", "₿"]
+
+    ÉmöjîRëqüëst:
+      type: object
+      required:
+        - tîtlë
+        - émöjîs
+      properties:
+        tîtlë:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: "Tîtlë with pötëñtîâl émöjîs âñd ünicödë"
+          example: "My Spëciâl Évënt 🎉"
+        dëscrîptîön:
+          type: string
+          maxLength: 1000
+          description: "Dëtâîlëd dëscrîptîön îñ âñy lâñgüâgë"
+          example: "Â wöñdërfül évëñt with lôts öf füñ âñd jöy! 很有趣的活动！"
+        émöjîs:
+          type: array
+          items:
+            type: string
+            pattern: "^[\\p{Emoji}\\p{Emoji_Presentation}\\p{Extended_Pictographic}]$"
+          minItems: 1
+          maxItems: 50
+          description: "Lîst öf émöjîs"
+          example: ["🎉", "💻", "🌟", "✅"]
+        tâgs:
+          type: array
+          items:
+            type: string
+            pattern: "^[\\p{L}\\p{M}\\p{N}\\s-_]{1,50}$"
+          maxItems: 20
+          description: "Tâgs îñ âñy lâñgüâgë"
+          example: ["测试", "тест", "اختبار", "テスト"]
+        mëtâdâtâ:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: number
+              - type: boolean
+          description: "Âddîtîöñâl mëtâdâtâ with ünicödë këys"
+          example:
+            "créateur": "Jëâñ-Clâüdë"
+            "年龄": 25
+            "активный": true
+            "العدد": 42.5
+
+    ÉmöjîRëspönsë:
+      type: object
+      required:
+        - îd
+        - tîtlë
+        - émöjîs
+        - crëâtëd_ât
+      properties:
+        îd:
+          type: string
+          format: uuid
+        tîtlë:
+          type: string
+          description: "Émöjî tëst tîtlë"
+        dëscrîptîön:
+          type: string
+          description: "Émöjî tëst dëscrîptîön"
+        émöjîs:
+          type: array
+          items:
+            type: string
+        tâgs:
+          type: array
+          items:
+            type: string
+        mëtâdâtâ:
+          type: object
+          additionalProperties: true
+        crëâtëd_ât:
+          type: string
+          format: date-time
+        üpdâtëd_ât:
+          type: string
+          format: date-time

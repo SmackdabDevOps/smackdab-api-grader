@@ -14,7 +14,10 @@ const mcpServer = new McpServer({
 // Helper for progress notifications
 function progress(stage: string, pct: number, note?: string) {
   // Progress notifications can be sent via the server if needed
-  console.error(`Progress: ${stage} - ${pct}% ${note || ''}`);
+  // Only log in debug mode to avoid stderr interference
+  if (process.env.DEBUG === 'true') {
+    console.error(`Progress: ${stage} - ${pct}% ${note || ''}`);
+  }
 }
 
 // Register tools
@@ -206,7 +209,10 @@ mcpServer.registerTool('get_api_history', {
 async function main() {
   const transport = new StdioServerTransport();
   await mcpServer.connect(transport);
-  console.error('Smackdab API Grader MCP server running...');
+  // Only log startup message in debug mode
+  if (process.env.DEBUG === 'true') {
+    console.error('Smackdab API Grader MCP server running...');
+  }
 }
 
 // Start the server

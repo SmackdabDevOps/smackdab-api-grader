@@ -1,0 +1,867 @@
+openapi: "3.0.3"
+info:
+  title: "Large E-commerce API"
+  version: "2.0.0"
+  description: "Comprehensive multi-tenant e-commerce API for testing large specs"
+  contact:
+    name: "API Team"
+    email: "api@example.com"
+  license:
+    name: "MIT"
+
+servers:
+  - url: "https://api.example.com/v2"
+    description: "Production server"
+  - url: "https://staging-api.example.com/v2"
+    description: "Staging server"
+
+security:
+  - OAuth2: ['read', 'write']
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/oauth/authorize
+          tokenUrl: https://auth.example.com/oauth/token
+          scopes:
+            read: Read access to resources
+            write: Write access to resources
+            admin: Administrative access
+
+  parameters:
+    OrganizationHeader:
+      name: X-Organization-ID
+      in: header
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: Organization identifier for multi-tenancy
+    
+    BranchHeader:
+      name: X-Branch-ID
+      in: header
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: Branch identifier for multi-tenancy
+      
+    AfterKey:
+      name: after_key
+      in: query
+      schema:
+        type: string
+      description: Cursor for keyset pagination
+      
+    BeforeKey:
+      name: before_key
+      in: query  
+      schema:
+        type: string
+      description: Cursor for backwards keyset pagination
+      
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Number of items to return
+
+  schemas:
+    Product:
+      type: object
+      required:
+        - id
+        - name
+        - organizationId
+        - branchId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Product identifier"
+        name:
+          type: string
+          maxLength: 255
+          description: "Product name"
+        description:
+          type: string
+          maxLength: 2000
+          description: "Product description"
+        price:
+          type: number
+          format: decimal
+          minimum: 0
+          description: "Product price"
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          description: "ISO 4217 currency code"
+        organizationId:
+          type: string
+          format: uuid
+          description: "Organization identifier"
+        branchId:
+          type: string
+          format: uuid
+          description: "Branch identifier"
+        categoryId:
+          type: string
+          format: uuid
+          description: "Category identifier"
+        inventory:
+          type: object
+          properties:
+            quantity:
+              type: integer
+              minimum: 0
+            reserved:
+              type: integer
+              minimum: 0
+            available:
+              type: integer
+              minimum: 0
+        tags:
+          type: array
+          items:
+            type: string
+          maxItems: 20
+        status:
+          type: string
+          enum: ['active', 'inactive', 'discontinued']
+          default: 'active'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Category:
+      type: object
+      required:
+        - id
+        - name
+        - organizationId
+        - branchId
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+        organizationId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Order:
+      type: object
+      required:
+        - id
+        - customerId
+        - organizationId
+        - branchId
+        - status
+        - items
+        - total
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          minItems: 1
+        total:
+          type: number
+          format: decimal
+          minimum: 0
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        shippingAddress:
+          $ref: "#/components/schemas/Address"
+        billingAddress:
+          $ref: "#/components/schemas/Address"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    OrderItem:
+      type: object
+      required:
+        - productId
+        - quantity
+        - price
+      properties:
+        productId:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+        price:
+          type: number
+          format: decimal
+          minimum: 0
+        discount:
+          type: number
+          format: decimal
+          minimum: 0
+
+    Customer:
+      type: object
+      required:
+        - id
+        - email
+        - organizationId
+        - branchId
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+          maxLength: 100
+        lastName:
+          type: string
+          maxLength: 100
+        phone:
+          type: string
+          pattern: '^\+?[1-9]\d{1,14}$'
+        organizationId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Address:
+      type: object
+      required:
+        - street
+        - city
+        - country
+      properties:
+        street:
+          type: string
+          maxLength: 255
+        city:
+          type: string
+          maxLength: 100
+        state:
+          type: string
+          maxLength: 100
+        postalCode:
+          type: string
+          maxLength: 20
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+
+    ResponseEnvelope:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          description: "Response payload"
+        meta:
+          type: object
+          required:
+            - timestamp
+            - version
+          properties:
+            timestamp:
+              type: string
+              format: date-time
+            version:
+              type: string
+            requestId:
+              type: string
+              format: uuid
+            pagination:
+              type: object
+              properties:
+                after_key:
+                  type: string
+                before_key:
+                  type: string
+                has_more:
+                  type: boolean
+
+    ErrorResponse:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+          description: "Problem type URI"
+        title:
+          type: string
+          description: "Short problem description"
+        status:
+          type: integer
+          description: "HTTP status code"
+        detail:
+          type: string
+          description: "Detailed problem description"
+        instance:
+          type: string
+          format: uri
+          description: "URI reference for this problem occurrence"
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+paths:
+  /api/v2/catalog/products:
+    get:
+      summary: "List products"
+      description: "Get paginated list of products"
+      operationId: "listProducts"
+      parameters:
+        - $ref: "#/components/parameters/OrganizationHeader"
+        - $ref: "#/components/parameters/BranchHeader"
+        - $ref: "#/components/parameters/AfterKey"
+        - $ref: "#/components/parameters/BeforeKey"
+        - $ref: "#/components/parameters/Limit"
+        - name: category_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: ['active', 'inactive', 'discontinued']
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: "Products retrieved successfully"
+          headers:
+            ETag:
+              description: "Entity tag for caching"
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Product"
+        '304':
+          description: "Not modified - use cached version"
+        '400':
+          description: "Bad request"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '401':
+          description: "Unauthorized"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '403':
+          description: "Forbidden"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - OAuth2: ['read']
+
+    post:
+      summary: "Create product"
+      description: "Create a new product"
+      operationId: "createProduct"
+      parameters:
+        - $ref: "#/components/parameters/OrganizationHeader"
+        - $ref: "#/components/parameters/BranchHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - price
+                - currency
+                - categoryId
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                description:
+                  type: string
+                  maxLength: 2000
+                price:
+                  type: number
+                  format: decimal
+                  minimum: 0
+                currency:
+                  type: string
+                  pattern: '^[A-Z]{3}$'
+                categoryId:
+                  type: string
+                  format: uuid
+                inventory:
+                  type: object
+                  properties:
+                    quantity:
+                      type: integer
+                      minimum: 0
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 20
+      responses:
+        '201':
+          description: "Product created successfully"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Product"
+        '400':
+          description: "Bad request"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '401':
+          description: "Unauthorized"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '403':
+          description: "Forbidden"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '422':
+          description: "Validation error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - OAuth2: ['write']
+
+  /api/v2/catalog/products/{productId}:
+    get:
+      summary: "Get product by ID"
+      description: "Retrieve a specific product"
+      operationId: "getProduct"
+      parameters:
+        - $ref: "#/components/parameters/OrganizationHeader" 
+        - $ref: "#/components/parameters/BranchHeader"
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+          description: "ETag for conditional requests"
+      responses:
+        '200':
+          description: "Product retrieved successfully"
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Product"
+        '304':
+          description: "Not modified"
+        '404':
+          description: "Product not found"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - OAuth2: ['read']
+
+    put:
+      summary: "Update product"
+      description: "Update an existing product"
+      operationId: "updateProduct"
+      parameters:
+        - $ref: "#/components/parameters/OrganizationHeader"
+        - $ref: "#/components/parameters/BranchHeader"
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                description:
+                  type: string
+                  maxLength: 2000
+                price:
+                  type: number
+                  format: decimal
+                  minimum: 0
+                status:
+                  type: string
+                  enum: ['active', 'inactive', 'discontinued']
+                inventory:
+                  type: object
+                  properties:
+                    quantity:
+                      type: integer
+                      minimum: 0
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 20
+      responses:
+        '200':
+          description: "Product updated successfully"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Product"
+        '400':
+          description: "Bad request"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '404':
+          description: "Product not found"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - OAuth2: ['write']
+
+  /api/v2/catalog/categories:
+    get:
+      summary: "List categories"
+      description: "Get paginated list of categories"
+      operationId: "listCategories"
+      parameters:
+        - $ref: "#/components/parameters/OrganizationHeader"
+        - $ref: "#/components/parameters/BranchHeader"
+        - $ref: "#/components/parameters/AfterKey"
+        - $ref: "#/components/parameters/BeforeKey"
+        - $ref: "#/components/parameters/Limit"
+        - name: parent_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+            nullable: true
+      responses:
+        '200':
+          description: "Categories retrieved successfully"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Category"
+      security:
+        - OAuth2: ['read']
+
+  /api/v2/orders:
+    get:
+      summary: "List orders"
+      description: "Get paginated list of orders"
+      operationId: "listOrders"
+      parameters:
+        - $ref: "#/components/parameters/OrganizationHeader"
+        - $ref: "#/components/parameters/BranchHeader"
+        - $ref: "#/components/parameters/AfterKey"
+        - $ref: "#/components/parameters/BeforeKey"
+        - $ref: "#/components/parameters/Limit"
+        - name: customer_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']
+        - name: from_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: "Orders retrieved successfully"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Order"
+      security:
+        - OAuth2: ['read']
+
+    post:
+      summary: "Create order"
+      description: "Create a new order"
+      operationId: "createOrder"
+      parameters:
+        - $ref: "#/components/parameters/OrganizationHeader"
+        - $ref: "#/components/parameters/BranchHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - customerId
+                - items
+                - shippingAddress
+              properties:
+                customerId:
+                  type: string
+                  format: uuid
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/OrderItem"
+                  minItems: 1
+                shippingAddress:
+                  $ref: "#/components/schemas/Address"
+                billingAddress:
+                  $ref: "#/components/schemas/Address"
+      responses:
+        '201':
+          description: "Order created successfully"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Order"
+        '400':
+          description: "Bad request"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - OAuth2: ['write']
+
+  /api/v2/customers:
+    get:
+      summary: "List customers"
+      description: "Get paginated list of customers"
+      operationId: "listCustomers"
+      parameters:
+        - $ref: "#/components/parameters/OrganizationHeader"
+        - $ref: "#/components/parameters/BranchHeader"
+        - $ref: "#/components/parameters/AfterKey"
+        - $ref: "#/components/parameters/BeforeKey"
+        - $ref: "#/components/parameters/Limit"
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: "Customers retrieved successfully"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Customer"
+      security:
+        - OAuth2: ['read']
+
+    post:
+      summary: "Create customer"
+      description: "Create a new customer"
+      operationId: "createCustomer"
+      parameters:
+        - $ref: "#/components/parameters/OrganizationHeader"
+        - $ref: "#/components/parameters/BranchHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                firstName:
+                  type: string
+                  maxLength: 100
+                lastName:
+                  type: string
+                  maxLength: 100
+                phone:
+                  type: string
+                  pattern: '^\+?[1-9]\d{1,14}$'
+                addresses:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Address"
+      responses:
+        '201':
+          description: "Customer created successfully"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Customer"
+      security:
+        - OAuth2: ['write']

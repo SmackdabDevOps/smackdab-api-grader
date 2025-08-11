@@ -1,0 +1,21 @@
+# API that fails prerequisites but would otherwise pass scoring
+openapi: "3.0.2"  # Wrong version - should be 3.0.3 (PREREQ-001)
+info:
+  title: "Prerequisite Failing API"
+  # Missing version field (structural integrity)
+paths:
+  /api/v2/users:
+    get:
+      summary: "Get users"
+      # Missing X-Organization-ID header (PREREQ-003)
+      responses:
+        '200':
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+# Missing security schemes (PREREQ-002)

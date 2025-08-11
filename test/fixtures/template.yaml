@@ -1,0 +1,133 @@
+# Smackdab API Template for Testing
+# This is a simplified template for test purposes
+openapi: "3.0.3"
+info:
+  title: "Smackdab API Template"
+  version: "3.2.3"
+  description: "Template for Smackdab-compliant APIs"
+  x-smackdab-tenancy: true
+  x-template-version: "3.2.3"
+
+# Template validation rules (would be processed by grader)
+x-smackdab-rules:
+  tenancy:
+    required: true
+    patterns:
+      - "/organizations/{organizationId}/branches/{branchId}/**"
+    weight: 25
+  
+  naming:
+    operationIds:
+      required: true
+      convention: "camelCase"
+    weight: 15
+    
+  http:
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - PATCH
+    statusCodes:
+      success: [200, 201, 202, 204]
+      error: [400, 401, 403, 404, 409, 422, 500]
+    weight: 20
+    
+  schemas:
+    required: true
+    examples: true
+    weight: 10
+    
+  security:
+    required: true
+    schemes: ["bearerAuth"]
+    weight: 10
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    BaseEntity:
+      type: object
+      required:
+        - id
+        - organizationId
+        - branchId
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PaginationMeta:
+      type: object
+      required:
+        - page
+        - perPage
+        - total
+        - totalPages
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        perPage:
+          type: integer
+          minimum: 1
+          maximum: 100
+        total:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+
+paths:
+  /health:
+    get:
+      summary: "Health check"
+      operationId: "getHealth"
+      responses:
+        '200':
+          description: "Service is healthy"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: ["healthy"]

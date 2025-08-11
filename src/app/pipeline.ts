@@ -27,7 +27,7 @@ import { calculateFinalGrade, generateGradeSummary } from '../scoring/finalizer.
 
 type Finding = { ruleId:string; message:string; severity: 'error'|'warn'|'info'; jsonPath:string; category?:string; line?:number };
 
-function letter(total:number){
+export function letter(total:number){
   if (total >= 97) return 'A+';
   if (total >= 93) return 'A';
   if (total >= 90) return 'A-';
@@ -69,7 +69,7 @@ async function loadSpec(path:string){
 function sha256(s:string){ return crypto.createHash('sha256').update(s).digest('hex'); }
 
 export async function gradeContract(args:any, {progress}:{progress:(s:string,p:number,note?:string)=>void}){
-  const templatePath = args.templatePath || '.claude/templates/MASTER_API_TEMPLATE_v3.yaml';
+  const templatePath = args.templatePath || './templates/MASTER_API_TEMPLATE_v3.yaml';
   const useLegacyScoring = args.legacyMode || false;  // Backward compatibility flag
   
   progress('template', 5);

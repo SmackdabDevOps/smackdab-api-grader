@@ -1,0 +1,51 @@
+openapi: "3.0.0"  # Wrong version - should be 3.0.3
+info:
+  title: "Bad API"
+  # Missing required version field
+  # Missing description field
+paths:
+  /users:  # Non-tenant path - violates tenancy requirements
+    get:
+      # Missing operationId
+      # Missing summary
+      parameters:
+        - name: invalidParam
+          # Missing 'in' field
+          schema:
+            type: string
+      responses:
+        # Missing required 200 response
+        '404':
+          description: "Not found"
+          # Missing content/schema
+
+    post:
+      summary: "Create user"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              # No required fields defined
+              properties:
+                name:
+                  # Missing type
+      # Missing responses entirely
+
+  /bad-path-{id}:  # Invalid path parameter format
+    get:
+      operationId: "getBad"
+      parameters:
+        - name: id
+          in: path
+          # Missing required: true for path parameter
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Success"
+          # Missing content
+
+# Missing components section
+# Missing security definitions
+# Missing servers
