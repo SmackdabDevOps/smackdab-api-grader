@@ -33,5 +33,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if(r.statusCode !== 200) process.exit(1)})" || exit 1
 
-# Start the SSE server
-CMD ["tsx", "src/mcp/server-sse-simple.ts"]
+# Start the REST API server
+CMD ["tsx", "src/api/rest-server.ts"]
