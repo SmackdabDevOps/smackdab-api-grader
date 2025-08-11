@@ -1,0 +1,1285 @@
+# ============================================================================
+# SMACKDAB INVENTORY API v2.0
+# ============================================================================
+# Concrete implementation following MASTER_API_TEMPLATE v4.0
+# This API manages product inventory for SmackDab's e-commerce platform
+# ============================================================================
+
+openapi: 3.0.3
+
+# ============================================================================
+# API METADATA
+# ============================================================================
+info:
+  title: Smackdab Inventory - Product Management API
+  description: |
+    # Inventory Management API
+    
+    Comprehensive inventory management system for SmackDab's multi-tenant e-commerce platform,
+    providing real-time stock tracking, product cataloging, and inventory operations.
+    
+    ## Key Features
+    - Real-time inventory tracking with stock level monitoring
+    - Multi-location inventory management across branches
+    - Bulk operations for efficient inventory updates
+    - Advanced search with full-text PostgreSQL capabilities
+    
+    ## Business Rules Implemented
+    - **RULE-INV-001**: Stock levels cannot go negative unless backordering is enabled
+    - **RULE-INV-002**: Product SKUs must be unique within an organization
+    - **RULE-INV-003**: Inventory adjustments require audit trail with reason codes
+    
+    ## Technical Architecture (SMACKDAB MANDATORY STACK)
+    - **Database**: PostgreSQL with Citus distribution by organization_id
+    - **Caching**: Dragonfly/Valkey (Redis-compatible) - NOT Redis directly
+    - **Events**: Apache Pulsar - NOT Kafka, NOT RabbitMQ, NOT SQS
+    - **Search**: PostgreSQL full-text search - NOT Elasticsearch
+    - **Real-time**: WebSocket with Apache Pulsar backing
+    - **NO SAGA PATTERN** - Use event-driven with Pulsar instead
+    - **NO MATERIALIZED VIEWS** - Use regular views or denormalized tables
+    - **NO FOREIGN KEYS** across distributed tables (Citus requirement)
+    
+    ## Performance Characteristics
+    - Read operations: <100ms p95
+    - Write operations: <500ms p95
+    - Bulk operations: 10,000 records/minute
+    - Availability target: 99.95%
+    
+    ## Security Model
+    - OAuth2 with granular scopes
+    - Multi-tenant isolation via headers (X-Organization-ID, X-Branch-ID)
+    - Rate limiting per tenant and tier
+    - Audit logging for compliance
+    - JWT claims include org_id and branch_id for Citus routing
+    
+    ## Error Response Guidelines
+    - **409 Conflict**: Resource state conflict (already exists, version mismatch, idempotency key reuse with different body)
+    - **422 Unprocessable Entity**: Valid syntax but semantic/business rule violations (validation failures, constraint violations)
+    
+  version: 2.0.0
+  contact:
+    name: Smackdab API Support
+    email: api-support@smackdab.com
+    url: https://docs.smackdab.com/inventory
+  license:
+    name: Proprietary
+    url: https://smackdab.com/license
+
+# ============================================================================
+# SERVERS
+# ============================================================================
+servers:
+  - url: https://api.smackdab.com
+    description: Production server
+  - url: https://staging-api.smackdab.com
+    description: Staging server
+  - url: http://localhost:8000
+    description: Development server
+
+# ============================================================================
+# TAGS
+# ============================================================================
+tags:
+  - name: Products
+    description: Product catalog management
+    x-displayName: Product Management
+  - name: Stock
+    description: Stock level operations
+    x-displayName: Stock Management
+  - name: Bulk Operations
+    description: Bulk operations for performance
+    x-displayName: Bulk Operations
+  - name: Admin
+    description: Administrative operations
+    x-displayName: Administration
+  - name: Jobs
+    description: Async job status and management
+    x-displayName: Job Management
+
+# ============================================================================
+# SECURITY
+# ============================================================================
+security:
+  - OAuth2: []
+  - BearerAuth: []
+
+# ============================================================================
+# PATHS
+# ============================================================================
+paths:
+  /api/v2/inventory/products:
+    parameters:
+      - $ref: '#/components/parameters/OrganizationHeader'
+      - $ref: '#/components/parameters/BranchHeader'
+      - $ref: '#/components/parameters/RequestId'
+    
+    get:
+      summary: List Products
+      description: Retrieve a paginated list of products with optional filtering
+      operationId: listProducts
+      tags:
+        - Products
+      security:
+        - OAuth2: ["read:inventory"]
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AfterKey'
+        - $ref: '#/components/parameters/BeforeKey'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Filters'
+        - $ref: '#/components/parameters/Fields'
+        - $ref: '#/components/parameters/Include'
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/Consistency'
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            Vary:
+              $ref: '#/components/headers/Vary'
+            X-Total-Count:
+              schema:
+                type: integer
+              description: Total number of items
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListResponse'
+              example:
+                success: true
+                data:
+                  - id: "550e8400-e29b-41d4-a716-446655440000"
+                    sku: "PROD-001"
+                    name: "Wireless Mouse"
+                    description: "Ergonomic wireless mouse with 3-year battery life"
+                    price: 29.99
+                    stock_level: 150
+                    category: "Electronics"
+                    created_at: "2025-01-11T10:00:00Z"
+                    updated_at: "2025-01-11T10:00:00Z"
+                meta:
+                  pagination:
+                    after_key: "550e8400-e29b-41d4-a716-446655440001"
+                    has_more: true
+                    total_count: 150
+                _links:
+                  self:
+                    href: "/api/v2/inventory/products?after_key=550e8400-e29b-41d4-a716-446655440000"
+                    method: "GET"
+                  next:
+                    href: "/api/v2/inventory/products?after_key=550e8400-e29b-41d4-a716-446655440001"
+                    method: "GET"
+        '304':
+          description: Not Modified (ETag matched)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+    post:
+      summary: Create Product
+      description: Create a new product in the inventory
+      operationId: createProduct
+      tags:
+        - Products
+      security:
+        - OAuth2: ["write:inventory"]
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductCreate'
+            example:
+              sku: "PROD-002"
+              name: "Mechanical Keyboard"
+              description: "RGB mechanical keyboard with Cherry MX switches"
+              price: 149.99
+              initial_stock: 50
+              category: "Electronics"
+              reorder_point: 10
+              reorder_quantity: 100
+      responses:
+        '201':
+          description: Created successfully
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URI of created resource
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '202':
+          description: Accepted for async processing
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: URI to check job status
+            Retry-After:
+              schema:
+                type: integer
+              description: Estimated seconds until processing completes
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncJobStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /api/v2/inventory/products/bulk:
+    parameters:
+      - $ref: '#/components/parameters/OrganizationHeader'
+      - $ref: '#/components/parameters/BranchHeader'
+      - $ref: '#/components/parameters/RequestId'
+    
+    post:
+      summary: Bulk create products
+      description: Create multiple products in a single transaction
+      operationId: bulkCreateProducts
+      tags:
+        - Bulk Operations
+      security:
+        - OAuth2: ["write:inventory"]
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  maxItems: 100
+                  items:
+                    $ref: '#/components/schemas/ProductCreate'
+      responses:
+        '201':
+          description: Bulk creation successful
+        '207':
+          $ref: '#/components/responses/MultiStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v2/inventory/products/search:
+    parameters:
+      - $ref: '#/components/parameters/OrganizationHeader'
+      - $ref: '#/components/parameters/BranchHeader'
+    
+    post:
+      summary: Advanced search products
+      description: Complex search with multiple filters and full-text search
+      operationId: searchProducts
+      tags:
+        - Products
+      security:
+        - OAuth2: ["read:inventory"]
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                  description: Full-text search query
+                filters:
+                  type: object
+                  properties:
+                    category:
+                      type: string
+                    min_price:
+                      type: number
+                    max_price:
+                      type: number
+                    in_stock:
+                      type: boolean
+                sort:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      field:
+                        type: string
+                      order:
+                        type: string
+                        enum: [asc, desc]
+                pagination:
+                  type: object
+                  properties:
+                    after_key:
+                      type: string
+                    limit:
+                      type: integer
+                      minimum: 1
+                      maximum: 100
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListResponse'
+
+  /api/v2/inventory/products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/OrganizationHeader'
+      - $ref: '#/components/parameters/BranchHeader'
+      - $ref: '#/components/parameters/RequestId'
+    
+    get:
+      summary: Get Product
+      operationId: getProduct
+      tags:
+        - Products
+      parameters:
+        - $ref: '#/components/parameters/Fields'
+        - $ref: '#/components/parameters/Include'
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/Consistency'
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '304':
+          description: Not Modified
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update Product
+      operationId: updateProduct
+      tags:
+        - Products
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductUpdate'
+            description: |
+              Partial update using JSON. Only fields present in request body are updated.
+              Null values explicitly set the field to null. Omitted fields are unchanged.
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/ProductUpdate'
+            description: |
+              RFC 7396 JSON Merge Patch format. Null means "remove this field".
+      responses:
+        '200':
+          description: Updated successfully
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+
+    delete:
+      summary: Delete Product
+      operationId: deleteProduct
+      tags:
+        - Products
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: Deleted successfully
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+
+  /api/v2/inventory/products/{id}/stock:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/OrganizationHeader'
+      - $ref: '#/components/parameters/BranchHeader'
+    
+    post:
+      summary: Adjust Stock
+      description: Adjust stock levels for a product
+      operationId: adjustStock
+      tags:
+        - Stock
+      security:
+        - OAuth2: ["write:inventory"]
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StockAdjustment'
+      responses:
+        '200':
+          description: Stock adjusted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockResponse'
+
+  /api/v2/inventory/jobs/{job_id}:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Async job identifier
+      - $ref: '#/components/parameters/OrganizationHeader'
+      - $ref: '#/components/parameters/BranchHeader'
+      - $ref: '#/components/parameters/RequestId'
+    
+    get:
+      summary: Get Async Job Status
+      description: Check the status of a long-running asynchronous operation
+      operationId: getJobStatus
+      tags:
+        - Jobs
+      responses:
+        '200':
+          description: Job status retrieved
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncJobStatus'
+        '303':
+          description: Job completed - see other location for result
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: URI of the created/modified resource
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /health:
+    get:
+      summary: Health check
+      description: Basic health check endpoint
+      operationId: healthCheck
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /ready:
+    get:
+      summary: Readiness probe
+      description: Check if service is ready to accept traffic
+      operationId: readinessCheck
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+        '503':
+          description: Service not ready
+
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      description: Expose metrics in Prometheus format
+      operationId: getMetrics
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: Metrics in Prometheus format
+          content:
+            text/plain:
+              schema:
+                type: string
+
+# ============================================================================
+# COMPONENTS
+# ============================================================================
+components:
+  # ==========================================================================
+  # SECURITY SCHEMES
+  # ==========================================================================
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      description: OAuth2 authentication with organization context
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.smackdab.com/oauth/authorize
+          tokenUrl: https://auth.smackdab.com/oauth/token
+          refreshUrl: https://auth.smackdab.com/oauth/refresh
+          scopes:
+            read:inventory: Read access to inventory
+            write:inventory: Write access to inventory
+            delete:inventory: Delete access to inventory
+            admin:inventory: Full admin access to inventory
+    
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Bearer token with org_id and branch_id claims
+    
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for service-to-service communication
+
+  # ==========================================================================
+  # PARAMETERS
+  # ==========================================================================
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Resource identifier (UUID format)
+    
+    OrganizationHeader:
+      name: X-Organization-ID
+      in: header
+      required: true
+      schema:
+        oneOf:
+          - type: integer
+            format: int64
+          - type: string
+            format: uuid
+      description: |
+        Organization context (required for Citus sharding).
+        Accepts BIGINT (current) or UUID (migrating).
+    
+    BranchHeader:
+      name: X-Branch-ID
+      in: header
+      required: false
+      schema:
+        oneOf:
+          - type: integer
+            format: int64
+          - type: string
+            format: uuid
+      description: |
+        Branch context for multi-location operations.
+    
+    AfterKey:
+      name: after_key
+      in: query
+      schema:
+        type: string
+      description: Key-set pagination cursor
+    
+    BeforeKey:
+      name: before_key
+      in: query
+      schema:
+        type: string
+      description: Reverse pagination cursor
+    
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Number of items per page
+    
+    Sort:
+      name: sort
+      in: query
+      schema:
+        type: string
+        pattern: '^([+-]?[a-zA-Z0-9_.]+)(,[+-]?[a-zA-Z0-9_.]+)*$'
+      example: "+created_at,-name"
+      description: Sort fields (+ascending, -descending)
+    
+    Filters:
+      name: filter
+      in: query
+      schema:
+        type: object
+        additionalProperties:
+          type: string
+      style: deepObject
+      description: Field filters
+    
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      schema:
+        type: string
+      description: ETag for conditional requests
+    
+    IfMatch:
+      name: If-Match
+      in: header
+      schema:
+        type: string
+      description: ETag for optimistic concurrency control
+    
+    IdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 64
+      description: Prevents duplicate processing
+    
+    Consistency:
+      name: X-Consistency
+      in: header
+      schema:
+        type: string
+        enum: [best_effort, eventual, strong]
+        default: eventual
+      description: Controls read consistency
+    
+    Fields:
+      name: fields
+      in: query
+      schema:
+        type: string
+        pattern: '^[a-zA-Z0-9_]+(,[a-zA-Z0-9_]+)*$'
+      description: Sparse fieldsets
+    
+    Include:
+      name: include
+      in: query
+      schema:
+        type: string
+        pattern: '^[a-zA-Z0-9_]+(,[a-zA-Z0-9_]+)*$'
+      description: Related resources to include
+    
+    RequestId:
+      name: X-Request-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Request correlation ID for tracing
+
+  # ==========================================================================
+  # HEADERS
+  # ==========================================================================
+  headers:
+    XRateLimitLimit:
+      schema:
+        type: integer
+      description: The number of allowed requests in the current period
+    
+    XRateLimitRemaining:
+      schema:
+        type: integer
+      description: The number of remaining requests in the current period
+    
+    XRateLimitReset:
+      schema:
+        type: integer
+        format: int64
+      description: The time at which the current rate limit window resets
+    
+    XRequestId:
+      schema:
+        type: string
+        format: uuid
+      description: Request correlation ID
+    
+    ETag:
+      schema:
+        type: string
+      description: Entity tag for caching/concurrency
+    
+    CacheControl:
+      schema:
+        type: string
+        example: "private, max-age=60"
+      description: Cache directive
+    
+    Vary:
+      schema:
+        type: string
+        example: 'Accept, Accept-Language, X-Organization-ID, X-Branch-ID'
+      description: Response varies by these headers
+
+  # ==========================================================================
+  # SCHEMAS
+  # ==========================================================================
+  schemas:
+    # Product Schemas
+    Product:
+      type: object
+      required: [id, sku, name, price, stock_level, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+          pattern: '^[A-Z0-9-]+$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        stock_level:
+          type: integer
+          minimum: 0
+        category:
+          type: string
+        reorder_point:
+          type: integer
+          minimum: 0
+        reorder_quantity:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ProductCreate:
+      type: object
+      required: [sku, name, price, initial_stock]
+      properties:
+        sku:
+          type: string
+          pattern: '^[A-Z0-9-]+$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        initial_stock:
+          type: integer
+          minimum: 0
+        category:
+          type: string
+        reorder_point:
+          type: integer
+          minimum: 0
+        reorder_quantity:
+          type: integer
+          minimum: 1
+
+    ProductUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        category:
+          type: string
+        reorder_point:
+          type: integer
+          minimum: 0
+        reorder_quantity:
+          type: integer
+          minimum: 1
+
+    StockAdjustment:
+      type: object
+      required: [quantity, reason, type]
+      properties:
+        quantity:
+          type: integer
+          description: Positive for increase, negative for decrease
+        reason:
+          type: string
+          enum: [sale, return, damage, theft, correction, received]
+        type:
+          type: string
+          enum: [absolute, relative]
+        notes:
+          type: string
+
+    StockResponse:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        previous_level:
+          type: integer
+        new_level:
+          type: integer
+        adjustment:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+
+    # Response Wrappers
+    ResponseEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          description: Response payload
+          nullable: true
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+        _links:
+          $ref: '#/components/schemas/HATEOASLinks'
+      required: [success, data, _links]
+
+    ProductResponse:
+      allOf:
+        - $ref: '#/components/schemas/ResponseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Product'
+
+    ProductListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ResponseEnvelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Product'
+
+    ResponseMeta:
+      type: object
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+          example: "v2"
+        organization_id:
+          oneOf:
+            - type: integer
+              format: int64
+            - type: string
+              format: uuid
+        branch_id:
+          oneOf:
+            - type: integer
+              format: int64
+            - type: string
+              format: uuid
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    PaginationMeta:
+      type: object
+      properties:
+        after_key:
+          type: string
+        before_key:
+          type: string
+        has_more:
+          type: boolean
+        total_count:
+          type: integer
+
+    HATEOASLinks:
+      type: object
+      additionalProperties:
+        type: object
+        required: [href]
+        properties:
+          href:
+            type: string
+            format: uri
+          method:
+            type: string
+            enum: [GET, POST, PUT, PATCH, DELETE]
+          title:
+            type: string
+
+    AsyncJobStatus:
+      type: object
+      required: [job_id, status, created_at, updated_at]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed]
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        result:
+          type: object
+        error:
+          $ref: '#/components/schemas/ProblemDetail'
+        _links:
+          $ref: '#/components/schemas/HATEOASLinks'
+
+    ProblemDetail:
+      type: object
+      required: [type, title, status, detail, instance]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+              code:
+                type: string
+        correlation_id:
+          type: string
+          format: uuid
+        request_id:
+          type: string
+          format: uuid
+
+  # ==========================================================================
+  # RESPONSES
+  # ==========================================================================
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    NotFound:
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Conflict:
+      description: Conflict
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    PreconditionFailed:
+      description: Precondition Failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    PreconditionRequired:
+      description: Precondition Required
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    UnsupportedMediaType:
+      description: Unsupported Media Type
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    UnprocessableEntity:
+      description: Unprocessable Entity
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    TooManyRequests:
+      description: Too Many Requests
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/XRateLimitReset'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    ServiceUnavailable:
+      description: Service Unavailable
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    MultiStatus:
+      description: Multi-Status
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              results:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    index:
+                      type: integer
+                    status:
+                      type: integer
+                    error:
+                      $ref: '#/components/schemas/ProblemDetail'
+
+# ============================================================================
+# EXTENSION: RATE LIMITING
+# ============================================================================
+x-rate-limiting:
+  standard:
+    requests: 1000
+    window: 60
+    description: Standard tier - 1000 requests per minute
+  premium:
+    requests: 5000
+    window: 60
+    description: Premium tier - 5000 requests per minute
+
+# ============================================================================
+# EXTENSION: CACHING STRATEGY
+# ============================================================================
+x-caching-strategy:
+  default:
+    ttl: 60
+    strategy: "private"
+    vary: ["X-Organization-ID", "X-Branch-ID", "Authorization"]
+
+# ============================================================================
+# EXTENSION: PERFORMANCE SLAs
+# ============================================================================
+x-performance-slas:
+  read:
+    p50: 50
+    p95: 100
+    p99: 200
+  write:
+    p50: 100
+    p95: 500
+    p99: 1000
