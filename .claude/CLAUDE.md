@@ -8,8 +8,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is an MCP (Model Context Protocol) server that grades OpenAPI specifications against Smackdab standards. It works as a service for other agents like Qodo or Claude Desktop. The system provides comprehensive API contract validation with scoring, fixes suggestions, and persistence.
 
+### ⚠️ CRITICAL: LOCAL vs PRODUCTION DEPLOYMENT
+
+**There are TWO versions of this application:**
+
+1. **LOCAL VERSION** (`http://localhost:3000`)
+   - FOR TESTING ONLY
+   - Started with: `npm start` or `npm run dev`
+   - Changes here DO NOT affect production
+   - Use only for development and testing
+
+2. **PRODUCTION VERSION** (`https://smackdab-api-grader.onrender.com`)
+   - HOSTED ON RENDER
+   - This is what Claude Desktop and other MCP clients use
+   - ALL CHANGES MUST BE DEPLOYED HERE
+   - Auto-deploys on push to master branch
+   - Service ID: srv-d2bk12be5dus738am0pg
+
+**⚠️ IMPORTANT: When making changes:**
+1. Test locally first
+2. Commit and push to master branch
+3. Render will auto-deploy to production
+4. Changes are NOT live until Render deployment completes
+5. Check deployment status at: https://dashboard.render.com
+
 ### Current Status
-- **Production Deployment**: Hosted on Render (free tier)
+- **Production Deployment**: Hosted on Render (PAID tier)
 - **Test Coverage**: Partial test failures exist but core functionality works
 - **Main Branch**: master
 - **Version**: 1.3.0
@@ -126,18 +150,92 @@ Key environment variables (see `.env.example`):
 
 ### Render Deployment (Current Production)
 - **Service**: Web service using Docker
-- **Plan**: Free tier (spins down after 15 min idle)
-- **Database**: PostgreSQL free tier (90 days)
-- **Auto-deploy**: Enabled on git push
+- **Plan**: PAID (not free tier)
+- **Service Name**: smackdab-api-grader
+- **Service ID**: srv-d2bk12be5dus738am0pg
+- **URL**: https://smackdab-api-grader.onrender.com
+- **Database**: PostgreSQL
+- **Auto-deploy**: Enabled on git push to master branch
 - **Health Check**: `/health` endpoint
 - **Region**: Oregon
 - **Configuration**: `render.yaml`
+
+### Render API Access
+To monitor deployments and get logs, use the Render API:
+
+#### Authentication
+- **API Key**: `rnd_igmLnJj1AIn3gigb2ZaZDk0Mrj6p`
+- **Header Format**: `Authorization: Bearer rnd_igmLnJj1AIn3gigb2ZaZDk0Mrj6p`
+- **Base URL**: `https://api.render.com/v1`
+
+#### Key Endpoints
+1. **List Services**: `GET /services`
+   - Find service ID by name
+   
+2. **Get Deploys**: `GET /services/{serviceId}/deploys`
+   - Check deployment status
+   - Get latest deploy info
+   
+3. **Get Logs**: `GET /services/{serviceId}/logs`
+   - View deployment logs
+   - Debug issues
+   
+4. **Get Service Details**: `GET /services/{serviceId}`
+   - Check service status
+   - Get service configuration
+
+#### Checking Deployment Status
+```bash
+# Set your API key
+export RENDER_API_KEY="your-key-here"
+
+# Get service ID
+curl -H "Authorization: Bearer $RENDER_API_KEY" \
+  https://api.render.com/v1/services | jq '.[] | select(.name=="smackdab-api-grader-mcp")'
+
+# Get latest deploy
+curl -H "Authorization: Bearer $RENDER_API_KEY" \
+  https://api.render.com/v1/services/{serviceId}/deploys?limit=1
+
+# Get logs
+curl -H "Authorization: Bearer $RENDER_API_KEY" \
+  https://api.render.com/v1/services/{serviceId}/logs
+```
 
 ### Docker
 - **Dockerfile**: Multi-stage build with Node 20 Alpine
 - **Entry Point**: `src/mcp/server-sse-simple.ts`
 - **Port**: 3000
 - **Health Check**: Built-in at `/health`
+
+## TEST-DRIVEN DEVELOPMENT (TDD) - MANDATORY
+
+### ⚠️ CRITICAL: ALWAYS USE TDD FOR ALL CODE WORK
+
+**You MUST follow Test-Driven Development (TDD) for ALL code implementations:**
+
+1. **WRITE TESTS FIRST** - Create failing tests BEFORE writing any implementation code
+2. **RED** - Verify tests fail with clear error messages
+3. **GREEN** - Write MINIMAL code to make tests pass
+4. **REFACTOR** - Improve code while keeping tests green
+5. **REPEAT** - Continue cycle for each new feature
+
+**NO EXCEPTIONS**: Never write implementation code without tests existing first. If you catch yourself implementing before testing, STOP and write tests immediately.
+
+### TDD Workflow Example
+```bash
+# 1. Write failing test
+npm test feature.spec.ts  # Should FAIL
+
+# 2. Implement minimal code
+# Edit implementation file
+
+# 3. Verify test passes
+npm test feature.spec.ts  # Should PASS
+
+# 4. Refactor if needed
+# 5. All tests should still pass
+```
 
 ## Testing
 

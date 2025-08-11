@@ -1,0 +1,16 @@
+
+> smackdab-api-grader-mcp@1.0.0 test
+> jest --verbose --reporters=json
+
+Error: Could not resolve a module for a custom reporter.
+  Module name: json
+    at /Users/brooksswift/Desktop/api-grader-mcp-starter/node_modules/jest-config/build/index.js:1551:15
+    at Array.map (<anonymous>)
+    at normalizeReporters (/Users/brooksswift/Desktop/api-grader-mcp-starter/node_modules/jest-config/build/index.js:1539:20)
+    at /Users/brooksswift/Desktop/api-grader-mcp-starter/node_modules/jest-config/build/index.js:1760:17
+    at Array.reduce (<anonymous>)
+    at normalize (/Users/brooksswift/Desktop/api-grader-mcp-starter/node_modules/jest-config/build/index.js:1658:14)
+    at async readConfig (/Users/brooksswift/Desktop/api-grader-mcp-starter/node_modules/jest-config/build/index.js:928:7)
+    at async readConfigs (/Users/brooksswift/Desktop/api-grader-mcp-starter/node_modules/jest-config/build/index.js:1168:26)
+    at async runCLI (/Users/brooksswift/Desktop/api-grader-mcp-starter/node_modules/@jest/core/build/index.js:1393:7)
+    at async Object.run (/Users/brooksswift/Desktop/api-grader-mcp-starter/node_modules/jest-cli/build/index.js:656:9)

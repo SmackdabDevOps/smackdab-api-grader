@@ -19,6 +19,9 @@ import { checkExtensions } from './semantic/extensions.js';
 import { checkComprehensive } from './semantic/comprehensive.js';
 import { CHECKPOINTS } from './checkpoints.js';
 import { GraderDB } from '../mcp/persistence/db.js';
+import { checkApiId } from '../scoring/prerequisites.js';
+import { calculateMetrics } from './tracking/metrics-calculator.js';
+import { calculateImprovements } from './tracking/improvement-analyzer.js';
 
 // New coverage-based scoring imports
 import { checkPrerequisites, Finding as NewFinding } from '../scoring/prerequisites.js';
@@ -268,6 +271,16 @@ export async function gradeContract(args:any, {progress}:{progress:(s:string,p:n
     checkpoints = checkpointScores;
   }
 
+  // Extract API UUID if present
+  const apiUuid = spec.info?.['x-api-id'];
+  const apiVersion = spec.info?.version || '0.0.0';
+  
+  // Calculate detailed metrics if we have an API ID
+  let detailedMetrics = null;
+  if (apiUuid) {
+    detailedMetrics = await calculateMetrics(spec, { grade });
+  }
+  
   progress('done', 100);
   // Get version info for metadata
   const versionInfo = await version();
@@ -285,8 +298,11 @@ export async function gradeContract(args:any, {progress}:{progress:(s:string,p:n
       scoringEngine: useLegacyScoring ? 'legacy' : 'coverage-based',
       instanceId: versionInfo.instanceId,
       instanceStartTime: versionInfo.instanceStartTime,
-      gradedAt: new Date().toISOString()
-    } 
+      gradedAt: new Date().toISOString(),
+      apiUuid,
+      apiVersion
+    },
+    detailedMetrics
   };
 }
 
@@ -323,14 +339,26 @@ export async function registerOrIdentifyApi(args:any){
 
 export async function gradeAndRecord(args:any, {progress}:{progress:(s:string,p:number,note?:string)=>void}){
   const r = await gradeContract(args,{progress});
-  const api = await registerOrIdentifyApi(args);
+  
+  // Use x-api-id if present, otherwise fall back to generated ID
+  let apiId = r.metadata?.apiUuid;
+  if (!apiId) {
+    const api = await registerOrIdentifyApi(args);
+    apiId = api.apiId;
+  }
+  
   const runId = 'run_' + sha256(JSON.stringify(r.metadata)+Date.now()).slice(0,12);
   const db = new GraderDB();
   await db.connect();
   await db.migrate();
+  
+  // Store in new tracking tables if API has x-api-id
+  if (r.metadata?.apiUuid && r.detailedMetrics) {
+    await storeApiTracking(db, r.metadata.apiUuid, r.metadata.apiVersion, r, r.detailedMetrics);
+  }
   await db.insertRun({
     run_id: runId,
-    api_id: api.apiId,
+    api_id: apiId,
     graded_at: new Date().toISOString(),
     template_version: r.metadata.templateVersion,
     template_hash: r.metadata.templateHash,
@@ -346,7 +374,7 @@ export async function gradeAndRecord(args:any, {progress}:{progress:(s:string,p:
   }, r.checkpoints.map((c:any)=>({ checkpoint_id: c.checkpoint_id, category: c.category, max_points: c.max_points, scored_points: c.scored_points })),
      r.findings.map((f:any)=>({ rule_id: f.ruleId, severity: f.severity, category: f.category, json_path: f.jsonPath, line: f.line, message: f.message }))
   );
-  return { runId, apiId: api.apiId, ...r };
+  return { runId, apiId, ...r };
 }
 
 
@@ -394,4 +422,117 @@ export async function compareRuns(args:any){
 export async function topViolations(args:any){
   const rows = await getTopViolations(args.limit ?? 10);
   return { rows };
+}
+
+/**
+ * Store API tracking information in new tables
+ */
+async function storeApiTracking(
+  db: GraderDB,
+  apiUuid: string,
+  apiVersion: string,
+  gradingResult: any,
+  metrics: any
+): Promise<void> {
+  try {
+    // Check if API exists in tracking table
+    const existingApi = await (db as any).db!.get(
+      `SELECT * FROM api WHERE api_uuid = ?`,
+      apiUuid
+    );
+    
+    if (!existingApi) {
+      // Insert new API
+      await (db as any).db!.run(
+        `INSERT INTO api (api_uuid, first_seen_at, last_seen_at, current_version, api_title, organization)
+         VALUES (?, datetime('now'), datetime('now'), ?, ?, ?)`,
+        apiUuid,
+        apiVersion,
+        gradingResult.metadata?.apiTitle || 'Unknown',
+        apiUuid.split('_')[0] // Extract organization from UUID prefix
+      );
+    } else {
+      // Update existing API
+      await (db as any).db!.run(
+        `UPDATE api SET last_seen_at = datetime('now'), current_version = ? WHERE api_uuid = ?`,
+        apiVersion,
+        apiUuid
+      );
+    }
+    
+    // Store version information
+    const versionId = `${apiUuid}_${apiVersion}`;
+    const existingVersion = await (db as any).db!.get(
+      `SELECT * FROM api_versions WHERE version_id = ?`,
+      versionId
+    );
+    
+    if (!existingVersion) {
+      await (db as any).db!.run(
+        `INSERT INTO api_versions (version_id, api_uuid, version_number, spec_hash, first_graded_at, last_graded_at, best_score, worst_score, average_score, grade_count)
+         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, 1)`,
+        versionId,
+        apiUuid,
+        apiVersion,
+        gradingResult.metadata.specHash,
+        gradingResult.grade.total,
+        gradingResult.grade.total,
+        gradingResult.grade.total
+      );
+    } else {
+      // Update version statistics
+      await (db as any).db!.run(
+        `UPDATE api_versions 
+         SET last_graded_at = datetime('now'),
+             best_score = MAX(best_score, ?),
+             worst_score = MIN(worst_score, ?),
+             average_score = ((average_score * grade_count) + ?) / (grade_count + 1),
+             grade_count = grade_count + 1
+         WHERE version_id = ?`,
+        gradingResult.grade.total,
+        gradingResult.grade.total,
+        gradingResult.grade.total,
+        versionId
+      );
+    }
+    
+    // Store detailed metrics
+    if (metrics) {
+      await (db as any).db!.run(
+        `INSERT INTO grading_metrics (
+          run_id, api_uuid, version_id,
+          functionality_score, security_score, design_score,
+          errors_score, performance_score, documentation_score,
+          endpoint_count, schema_count,
+          has_pagination, has_rate_limiting, has_webhooks, has_async_patterns,
+          auth_methods, error_format, response_envelope,
+          endpoint_documented_pct, schema_documented_pct, example_coverage_pct
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        gradingResult.metadata.runId || 'unknown',
+        apiUuid,
+        versionId,
+        metrics.categoryScores?.functionality || 0,
+        metrics.categoryScores?.security || 0,
+        metrics.categoryScores?.design || 0,
+        metrics.categoryScores?.errors || 0,
+        metrics.categoryScores?.performance || 0,
+        metrics.categoryScores?.documentation || 0,
+        metrics.endpointCount,
+        metrics.schemaCount,
+        metrics.hasPagination ? 1 : 0,
+        metrics.hasRateLimiting ? 1 : 0,
+        metrics.hasWebhooks ? 1 : 0,
+        metrics.hasAsyncPatterns ? 1 : 0,
+        JSON.stringify(metrics.authMethods),
+        metrics.errorFormat,
+        metrics.hasResponseEnvelope ? 1 : 0,
+        metrics.endpointDocumentedPct,
+        metrics.schemaDocumentedPct,
+        metrics.exampleCoveragePct
+      );
+    }
+  } catch (error) {
+    console.error('Error storing API tracking data:', error);
+    // Don't fail the grading if tracking fails
+  }
 }

@@ -25,6 +25,7 @@ const PREREQUISITE_RULES = [
   'PREREQ-001', // Valid OpenAPI 3.0.3
   'PREREQ-002', // Some authentication defined
   'PREREQ-003', // X-Organization-ID on write operations
+  'PREREQ-API-ID', // Required x-api-id in info section
 ];
 
 /**
@@ -89,11 +90,55 @@ export async function checkPrerequisites(spec: any): Promise<PrerequisiteResult>
 }
 
 /**
+ * Check for required x-api-id
+ */
+export function checkApiId(spec: any): { passed: boolean; failures: Finding[] } {
+  const failures: Finding[] = [];
+  
+  if (!spec?.info?.['x-api-id']) {
+    failures.push({
+      ruleId: 'PREREQ-API-ID',
+      severity: 'critical',
+      message: 'API specification missing required x-api-id. Generate one using generate_api_id tool.',
+      location: '$.info',
+      category: 'prerequisites',
+      fixHint: 'Use generate_api_id MCP tool to create a unique API identifier and add it to info.x-api-id'
+    });
+  } else {
+    // Validate ID format
+    const apiId = spec.info['x-api-id'];
+    const validFormat = /^[a-z0-9]+_\d{13}_[a-f0-9]{16}$/;
+    if (!validFormat.test(apiId)) {
+      failures.push({
+        ruleId: 'PREREQ-API-ID-FORMAT',
+        severity: 'critical',
+        message: 'Invalid x-api-id format. Use generate_api_id tool to create valid ID.',
+        location: '$.info.x-api-id',
+        category: 'prerequisites',
+        fixHint: 'The x-api-id must follow the format: {prefix}_{timestamp}_{random}. Use generate_api_id tool.'
+      });
+    }
+  }
+  
+  return { 
+    passed: failures.length === 0,
+    failures 
+  };
+}
+
+/**
  * Check basic structural integrity of the OpenAPI spec
  */
 function checkStructuralIntegrity(spec: any): { failures: Finding[], fixes: string[] } {
   const failures: Finding[] = [];
   const fixes: string[] = [];
+  
+  // Check for x-api-id first
+  const apiIdCheck = checkApiId(spec);
+  failures.push(...apiIdCheck.failures);
+  if (!apiIdCheck.passed) {
+    fixes.push('Add x-api-id using generate_api_id tool');
+  }
   
   // Check required top-level fields
   if (!spec.openapi) {
@@ -295,6 +340,12 @@ components:
         type: integer
         format: int64
       description: Organization identifier for multi-tenancy`);
+        break;
+        
+      case 'PREREQ-API-ID':
+      case 'PREREQ-API-ID-FORMAT':
+        ruleFixes.push('Run: generate_api_id tool to create a unique API identifier');
+        ruleFixes.push('Add the generated ID to info.x-api-id in your OpenAPI spec');
         break;
     }
     
