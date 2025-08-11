@@ -1,47 +1,76 @@
 openapi: 3.0.3
 info:
-  title: Master API Template
+  title: Master API Template (Enterprise)
   version: 3.0.0
-  description: Master template for API grading
+  description: |
+    **Enterprise API Template** — copy this file to start a new contract.
+
+    ✅ Design pillars (baked into this template):
+      - Clear **versioning** policy (major in path), **deprecation** headers, and strong **backwards‑compat** rules
+      - Deterministic **key‑set pagination**, **idempotency**, **optimistic concurrency** (ETag/If‑Match)
+      - Strong **multi‑tenant isolation** headers, **correlation/trace** headers, and standard **rate‑limit** headers
+      - RFC‑7807 **error** format, **localization** via `Accept-Language`, and **sparse fieldsets** via `fields`
+      - Async operation pattern with **202 Accepted** + `GET /operations/{id}` status polling
+
+    🔎 Agent/developer guidance:
+      - Use **operationId** verbs in `camelCase` (e.g., `listItems`, `createItem`, `getItem`, `updateItem`, `patchItem`, `deleteItem`).
+      - Only **breaking changes** bump the major version in the server URL; non‑breaking ship within the same major.
+      - Every 2xx/4xx/5xx response includes a schema and examples; prefer reusable components.
+
   contact:
     email: api@example.com
+
+x-versioning:
+  strategy: path-major
+  policy: |
+    - Major version appears as `/v{major}` in the server URL and changes only on **breaking** changes.
+    - Minor and patch changes are backward compatible and do not alter the URL.
+    - Deprecations include `Deprecation` and `Sunset` headers with a documented migration path.
+
+x-deprecation-policy:
+  min_notice_days: 180
+  headers: [Deprecation, Sunset]
+
+x-audience: public
+
 servers:
-  - url: https://api.example.com/api/v2
-    description: Production server
+  - url: https://{host}/{basePath}/v{version}
+    description: Template server (prod/staging)
+    variables:
+      host:
+        default: api.example.com
+        description: API hostname (e.g., api.example.com, staging-api.example.com)
+      basePath:
+        default: api
+        description: Base path segment
+      version:
+        default: '2'
+        description: Semantic **major** version (breaking changes only)
+  - url: http://localhost:{port}/{basePath}/v{version}
+    description: Local development server
+    variables:
+      port:
+        default: '8000'
+        description: Local dev port
+      basePath:
+        default: api
+      version:
+        default: '2'
+
+security:
+  # By default, either OAuth2 (read scope) **or** Bearer JWT is acceptable; override per operation if stricter
+  - OAuth2: [read]
+  - BearerAuth: []
+
+tags:
+  - name: System
+    description: System operations
+  - name: Items
+    description: Item management operations
+  - name: Operations
+    description: Long‑running / asynchronous operations
+
 components:
-  parameters:
-    OrganizationHeader:
-      name: X-Organization-ID
-      in: header
-      required: true
-      schema:
-        type: string
-        format: uuid
-      description: Organization identifier for multi-tenancy
-    BranchHeader:
-      name: X-Branch-ID
-      in: header
-      required: true
-      schema:
-        type: string
-        format: uuid
-      description: Branch identifier for multi-tenancy
-    AfterKey:
-      name: after_key
-      in: query
-      required: false
-      schema:
-        type: string
-      description: Key-set pagination cursor
-    Limit:
-      name: limit
-      in: query
-      required: false
-      schema:
-        type: integer
-        maximum: 100
-        default: 20
-      description: Maximum number of items to return
   securitySchemes:
     OAuth2:
       type: oauth2
@@ -51,78 +80,333 @@ components:
           tokenUrl: https://auth.example.com/oauth/token
           scopes:
             read: Read access to protected resources
-            write: Write access to protected resources
+            write: Write access
             admin: Administrative access
-    ApiKeyAuth:
-      type: apiKey
-      in: header
-      name: X-API-Key
-      description: API key for authentication
+        clientCredentials:
+          tokenUrl: https://auth.example.com/oauth/token
+          scopes:
+            svc.read: Service‑to‑service read access
+            svc.write: Service‑to‑service write access
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT bearer token authentication
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  headers:
+    ETag:
+      description: Entity tag representing the current resource version
+      schema:
+        type: string
+    Location:
+      description: Absolute or relative URI of a newly created resource or operation
+      schema:
+        type: string
+        format: uri
+    XRequestId:
+      description: Correlation/request id; echoed if client sends X-Request-ID
+      schema:
+        type: string
+    RetryAfter:
+      description: Seconds to wait before retry
+      schema:
+        type: integer
+    ContentLanguage:
+      description: Language of the response payload
+      schema:
+        type: string
+        example: en-US
+    Deprecation:
+      description: Resource is deprecated (boolean or RFC 8594 date)
+      schema:
+        oneOf:
+          - type: boolean
+          - type: string
+            format: date
+    Sunset:
+      description: RFC 8594 sunset date when the resource will be retired
+      schema:
+        type: string
+        format: date-time
+    PreferenceApplied:
+      description: Echo of applied Prefer directive(s)
+      schema:
+        type: string
+    RateLimit-Limit:
+      description: Total request-quota for the time window (IETF draft RateLimit headers)
+      schema:
+        type: integer
+    RateLimit-Remaining:
+      description: Remaining requests in the current window
+      schema:
+        type: integer
+    RateLimit-Reset:
+      description: Seconds until the quota resets
+      schema:
+        type: integer
+
+  parameters:
+    OrganizationHeader:
+      name: X-Organization-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Organization identifier for multi‑tenancy
+    BranchHeader:
+      name: X-Branch-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Branch identifier for multi‑tenancy
+    RequestIdHeader:
+      name: X-Request-ID
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Optional client‑supplied correlation id
+    TraceparentHeader:
+      name: traceparent
+      in: header
+      required: false
+      schema:
+        type: string
+      description: W3C Trace Context header for distributed tracing
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Preferred response language (e.g., `en-US`)
+    PreferHeader:
+      name: Prefer
+      in: header
+      required: false
+      schema:
+        type: string
+        enum: [return=minimal, return=representation]
+      description: Influence response body on create/update
+    AfterKey:
+      name: after_key
+      in: query
+      schema:
+        type: string
+      description: Key‑set pagination: fetch items **after** this key
+    BeforeKey:
+      name: before_key
+      in: query
+      schema:
+        type: string
+      description: Key‑set pagination: fetch items **before** this key
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        maximum: 100
+        default: 20
+      description: Page size limit
+    Sort:
+      name: sort
+      in: query
+      schema:
+        type: string
+        enum: [created_at, updated_at, name]
+      description: Sort key for results
+    Fields:
+      name: fields
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Comma‑separated list of fields to include (sparse fieldsets)
+    Include:
+      name: include
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Comma‑separated related resources to expand
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      schema:
+        type: string
+      description: Return **304** if ETag matches
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Required for updates; prevents lost updates via optimistic concurrency
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      schema:
+        type: string
+      description: Make POST/PATCH/DELETE safe to retry
+
+  requestBodies:
+    ItemCreate:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [name]
+            properties:
+              name:
+                type: string
+                minLength: 1
+                maxLength: 255
+    ItemMergePatch:
+      required: true
+      content:
+        application/merge-patch+json:
+          schema:
+            type: object
+            description: JSON Merge Patch (RFC 7386)
+            properties:
+              name:
+                type: string
+                minLength: 1
+                maxLength: 255
+
   schemas:
     ResponseEnvelope:
       type: object
-      required:
-        - success
-        - data
+      required: [success, data]
       properties:
         success:
           type: boolean
-          description: Indicates if the request was successful
         data:
-          type: object
-          description: Response payload
+          nullable: true
         meta:
-          type: object
-          description: Response metadata
-          properties:
-            next_key:
-              type: string
-              description: Pagination cursor for next page
-            organization_id:
-              type: string
-              format: uuid
-              description: Organization context
-            request_id:
-              type: string
-              format: uuid
-              description: Unique request identifier
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ResponseMeta:
+      type: object
+      properties:
+        request_id:
+          type: string
+        organization_id:
+          type: string
+          format: uuid
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+        deprecated_at:
+          type: string
+          format: date-time
+          description: If set, indicates the resource/operation is deprecated
+
+    PaginationMeta:
+      type: object
+      properties:
+        next_key:
+          type: string
+        prev_key:
+          type: string
+        limit:
+          type: integer
+
+    Item:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        created_at:
+          type: string
+          format: date-time
+
+    Operation:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        resource:
+          type: string
+          description: URI of the resource created/affected
+        error:
+          $ref: '#/components/schemas/ErrorResponse'
+
+    Deleted:
+      type: object
+      required: [id, deleted]
+      properties:
+        id:
+          type: string
+        deleted:
+          type: boolean
+          const: true
+
     ErrorResponse:
       type: object
-      required:
-        - type
-        - title
-        - status
+      required: [type, title, status]
       properties:
         type:
           type: string
           format: uri
-          description: URI reference for error type
         title:
           type: string
-          description: Short human-readable summary
         status:
           type: integer
-          description: HTTP status code
         detail:
           type: string
-          description: Human-readable explanation
         instance:
           type: string
           format: uri
-          description: URI reference for specific occurrence
+
   responses:
+    400BadRequest:
+      description: Invalid request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     401Unauthorized:
       description: Authentication required
       headers:
         WWW-Authenticate:
           schema:
             type: string
-            description: Authentication challenge
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    404NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    409Conflict:
+      description: Conflict (e.g., ETag mismatch or unique constraint)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    422UnprocessableEntity:
+      description: Validation failed
       content:
         application/problem+json:
           schema:
@@ -131,21 +415,13 @@ components:
       description: Rate limit exceeded
       headers:
         Retry-After:
-          schema:
-            type: integer
-            description: Seconds to wait before retry
-        X-RateLimit-Limit:
-          schema:
-            type: integer
-            description: Request limit per window
-        X-RateLimit-Remaining:
-          schema:
-            type: integer
-            description: Remaining requests in window
-        X-RateLimit-Reset:
-          schema:
-            type: integer
-            description: Unix timestamp when limit resets
+          $ref: '#/components/headers/RetryAfter'
+        RateLimit-Limit:
+          $ref: '#/components/headers/RateLimit-Limit'
+        RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimit-Remaining'
+        RateLimit-Reset:
+          $ref: '#/components/headers/RateLimit-Reset'
       content:
         application/problem+json:
           schema:
@@ -154,20 +430,91 @@ components:
       description: Service temporarily unavailable
       headers:
         Retry-After:
-          schema:
-            type: integer
-            description: Seconds to wait before retry
+          $ref: '#/components/headers/RetryAfter'
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+
+    ListItemsSuccess:
+      description: Paginated list of items
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        ETag:
+          $ref: '#/components/headers/ETag'
+        Content-Language:
+          $ref: '#/components/headers/ContentLanguage'
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ResponseEnvelope'
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Item'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+    GetItemSuccess:
+      description: Item retrieved successfully
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        ETag:
+          $ref: '#/components/headers/ETag'
+        Content-Language:
+          $ref: '#/components/headers/ContentLanguage'
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ResponseEnvelope'
+              - type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Item'
+
+    CreateItemAccepted:
+      description: Item accepted for processing (asynchronous)
+      headers:
+        Location:
+          $ref: '#/components/headers/Location'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestId'
+        Preference-Applied:
+          $ref: '#/components/headers/PreferenceApplied'
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ResponseEnvelope'
+              - type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Operation'
+
+    DeletedSuccess:
+      description: Deletion acknowledged (idempotent)
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ResponseEnvelope'
+              - type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Deleted'
+
 paths:
   /health:
     get:
       summary: Health check endpoint
       operationId: getHealth
-      tags:
-        - System
+      tags: [System]
       responses:
         '200':
           description: Service is healthy
@@ -184,91 +531,161 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
+
   /items:
     parameters:
       - $ref: '#/components/parameters/OrganizationHeader'
       - $ref: '#/components/parameters/BranchHeader'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      - $ref: '#/components/parameters/TraceparentHeader'
+      - $ref: '#/components/parameters/AcceptLanguage'
     get:
-      summary: List items with key-set pagination
+      summary: List items with key‑set pagination
+      description: |
+        Implements **key‑set pagination** using `after_key` and `before_key`.
+        Use `limit` to bound page size. Results are cacheable with ETags and localizable.
       operationId: listItems
-      tags:
-        - Items
+      tags: [Items]
       parameters:
         - $ref: '#/components/parameters/AfterKey'
+        - $ref: '#/components/parameters/BeforeKey'
         - $ref: '#/components/parameters/Limit'
-        - name: Sort
-          in: query
-          schema:
-            type: string
-            enum: [created_at, updated_at, name]
-          description: Sort order for results
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Fields'
+        - $ref: '#/components/parameters/Include'
+        - $ref: '#/components/parameters/IfNoneMatch'
       responses:
-        '200':
-          description: Items retrieved successfully
-          headers:
-            ETag:
-              schema:
-                type: string
-              description: Entity tag for caching
-            X-RateLimit-Limit:
-              schema:
-                type: integer
-            X-RateLimit-Remaining:
-              schema:
-                type: integer
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/ResponseEnvelope'
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            id:
-                              type: string
-                              format: uuid
-                            name:
-                              type: string
-                            created_at:
-                              type: string
-                              format: date-time
-        '304':
-          description: Not Modified
-        '401':
-          $ref: '#/components/responses/401Unauthorized'
-        '429':
-          $ref: '#/components/responses/429TooManyRequests'
+        '200': { $ref: '#/components/responses/ListItemsSuccess' }
+        '304': { description: Not Modified }
+        '401': { $ref: '#/components/responses/401Unauthorized' }
+        '429': { $ref: '#/components/responses/429TooManyRequests' }
+        '503': { $ref: '#/components/responses/503ServiceUnavailable' }
+
     post:
-      summary: Create a new item
+      summary: Create a new item (idempotent, async by default)
+      description: |
+        Uses **Idempotency-Key** to make retries safe. Returns **202 Accepted** with
+        `Location` header pointing to the **operation** resource. Clients should poll
+        `GET /operations/{id}` until `status` is `completed`.
       operationId: createItem
-      tags:
-        - Items
+      tags: [Items]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/PreferHeader'
       requestBody:
+        $ref: '#/components/requestBodies/ItemCreate'
+      responses:
+        '202': { $ref: '#/components/responses/CreateItemAccepted' }
+        '400': { $ref: '#/components/responses/400BadRequest' }
+        '401': { $ref: '#/components/responses/401Unauthorized' }
+        '422': { $ref: '#/components/responses/422UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/429TooManyRequests' }
+        '503': { $ref: '#/components/responses/503ServiceUnavailable' }
+
+  /items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/OrganizationHeader'
+      - $ref: '#/components/parameters/BranchHeader'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      - $ref: '#/components/parameters/TraceparentHeader'
+      - name: itemId
+        in: path
         required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get item by id (ETag‑enabled, localizable, sparse fields)
+      operationId: getItem
+      tags: [Items]
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/Fields'
+        - $ref: '#/components/parameters/Include'
+      responses:
+        '200': { $ref: '#/components/responses/GetItemSuccess' }
+        '304': { description: Not Modified }
+        '401': { $ref: '#/components/responses/401Unauthorized' }
+        '404': { $ref: '#/components/responses/404NotFound' }
+        '429': { $ref: '#/components/responses/429TooManyRequests' }
+        '503': { $ref: '#/components/responses/503ServiceUnavailable' }
+
+    put:
+      summary: Update item by id (optimistic concurrency with If‑Match)
+      operationId: updateItem
+      tags: [Items]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/PreferHeader'
+      requestBody:
         content:
           application/json:
             schema:
               type: object
-              required:
-                - name
               properties:
                 name:
                   type: string
                   minLength: 1
                   maxLength: 255
       responses:
-        '202':
-          description: Accepted for processing
-          headers:
-            Location:
-              schema:
-                type: string
-                format: uri
-              description: URI of the created resource
+        '200': { $ref: '#/components/responses/GetItemSuccess' }
+        '400': { $ref: '#/components/responses/400BadRequest' }
+        '401': { $ref: '#/components/responses/401Unauthorized' }
+        '404': { $ref: '#/components/responses/404NotFound' }
+        '409': { $ref: '#/components/responses/409Conflict' }
+        '422': { $ref: '#/components/responses/422UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/429TooManyRequests' }
+        '503': { $ref: '#/components/responses/503ServiceUnavailable' }
+
+    patch:
+      summary: Patch item by id (JSON Merge Patch)
+      operationId: patchItem
+      tags: [Items]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/PreferHeader'
+      requestBody:
+        $ref: '#/components/requestBodies/ItemMergePatch'
+      responses:
+        '200': { $ref: '#/components/responses/GetItemSuccess' }
+        '400': { $ref: '#/components/responses/400BadRequest' }
+        '401': { $ref: '#/components/responses/401Unauthorized' }
+        '404': { $ref: '#/components/responses/404NotFound' }
+        '409': { $ref: '#/components/responses/409Conflict' }
+        '422': { $ref: '#/components/responses/422UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/429TooManyRequests' }
+        '503': { $ref: '#/components/responses/503ServiceUnavailable' }
+
+    delete:
+      summary: Delete item by id (idempotent)
+      operationId: deleteItem
+      tags: [Items]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { $ref: '#/components/responses/DeletedSuccess' }
+        '401': { $ref: '#/components/responses/401Unauthorized' }
+        '404': { $ref: '#/components/responses/404NotFound' }
+        '429': { $ref: '#/components/responses/429TooManyRequests' }
+        '503': { $ref: '#/components/responses/503ServiceUnavailable' }
+
+  /operations/{operationId}:
+    parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+      - name: operationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get status for an asynchronous operation
+      operationId: getOperation
+      tags: [Operations]
+      responses:
+        '200':
+          description: Operation status
           content:
             application/json:
               schema:
@@ -277,33 +694,9 @@ paths:
                   - type: object
                     properties:
                       data:
-                        type: object
-                        properties:
-                          id:
-                            type: string
-                            format: uuid
-                          status:
-                            type: string
-                            enum: [pending, processing, completed]
-        '400':
-          description: Invalid request
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          $ref: '#/components/responses/401Unauthorized'
-        '429':
-          $ref: '#/components/responses/429TooManyRequests'
-security:
-  - OAuth2: [read]
-  - BearerAuth: []
-  - ApiKeyAuth: []
-tags:
-  - name: System
-    description: System operations
-  - name: Items
-    description: Item management operations
+                        $ref: '#/components/schemas/Operation'
+        '404': { $ref: '#/components/responses/404NotFound' }
+
 x-spectral-rules:
   require-operation-id:
     severity: error
@@ -317,3 +710,10 @@ x-spectral-rules:
     then:
       field: tags
       function: truthy
+  operationId-style:
+    severity: warn
+    given: $.paths[*][*].operationId
+    then:
+      function: pattern
+      functionOptions:
+        match: '^[a-z]+[A-Za-z0-9]*$'

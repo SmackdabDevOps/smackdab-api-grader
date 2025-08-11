@@ -3,8 +3,9 @@
     "smackdab-grader": {
       "command": "npx",
       "args": [
-        "tsx",
-        "/Users/brooksswift/Desktop/api-grader-mcp-starter/src/mcp/sse-client.ts"
+        "-y",
+        "@modelcontextprotocol/server-sse-client",
+        "https://smackdab-api-grader.onrender.com/sse"
       ],
       "env": {
         "MCP_SSE_URL": "https://smackdab-api-grader.onrender.com/sse",

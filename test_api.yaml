@@ -1,0 +1,19 @@
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+  x-api-id: test_1234567890_abc123
+paths:
+  /users:
+    get:
+      summary: Get users
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+EOF < /dev/null
