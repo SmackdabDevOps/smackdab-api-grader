@@ -10,8 +10,8 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "dev": "tsx src/mcp/server.ts",
-    "dev:local": "tsx src/mcp/server.ts",
+    "dev": "echo 'Local development deprecated. Use hosted server at https://smackdab-api-grader.onrender.com'",
+    "dev:local": "echo 'Local servers archived. Use hosted server instead.'",
     "dev:sse": "tsx watch src/mcp/server-sse.ts",
     "start": "NODE_ENV=production tsx src/mcp/server-sse-simple.ts",
     "start:mcp-sse": "NODE_ENV=production tsx src/mcp/server-mcp-sse.ts",

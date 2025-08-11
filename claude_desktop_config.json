@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "smackdab-grader": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sse-client",
+        "https://smackdab-api-grader.onrender.com/sse"
+      ],
+      "env": {
+        "MCP_SSE_URL": "https://smackdab-api-grader.onrender.com/sse",
+        "MCP_SSE_API_KEY": "sk_prod_001"
+      }
+    }
+  }
+}
