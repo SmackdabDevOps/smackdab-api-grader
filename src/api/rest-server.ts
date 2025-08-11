@@ -27,15 +27,35 @@ app.use(express.text({ limit: '10mb' }));
 
 // Simple auth middleware
 function checkAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const auth = req.headers.authorization;
-  const apiKey = process.env.API_KEY || 'sk_prod_001';
-  
   // Allow health and version endpoints without auth
   if (req.path === '/health' || req.path === '/api/version') {
     return next();
   }
   
-  if (auth !== `Bearer ${apiKey}`) {
+  const auth = req.headers.authorization;
+  
+  // Check for API keys from environment (can be JSON string or single key)
+  let validKeys: Set<string> = new Set();
+  
+  if (process.env.API_KEYS) {
+    // Parse JSON object of keys
+    try {
+      const keys = JSON.parse(process.env.API_KEYS);
+      Object.keys(keys).forEach(k => validKeys.add(k));
+    } catch {
+      // If not JSON, treat as single key
+      validKeys.add(process.env.API_KEYS);
+    }
+  } else if (process.env.API_KEY) {
+    // Single API key
+    validKeys.add(process.env.API_KEY);
+  } else {
+    // Default key for testing
+    validKeys.add('sk_prod_001');
+  }
+  
+  const providedKey = auth?.replace('Bearer ', '');
+  if (!providedKey || !validKeys.has(providedKey)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   
