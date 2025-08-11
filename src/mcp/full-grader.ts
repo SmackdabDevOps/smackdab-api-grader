@@ -180,6 +180,101 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
         },
       },
+      {
+        name: "generate_api_id",
+        description: "Generate a unique API identifier",
+        inputSchema: {
+          type: "object",
+          properties: {
+            organization: {
+              type: "string",
+              description: "Organization name (optional)",
+            },
+            domain: {
+              type: "string",
+              description: "Business domain (optional)",
+            },
+            type: {
+              type: "string",
+              description: "API type (optional)",
+            },
+          },
+        },
+      },
+      {
+        name: "validate_api_id",
+        description: "Validate an API has x-api-id",
+        inputSchema: {
+          type: "object",
+          properties: {
+            content: {
+              type: "string",
+              description: "OpenAPI content (base64 encoded)",
+            },
+          },
+          required: ["content"],
+        },
+      },
+      {
+        name: "get_api_history",
+        description: "Get grading history for an API",
+        inputSchema: {
+          type: "object",
+          properties: {
+            apiUuid: {
+              type: "string",
+              description: "The API UUID from x-api-id",
+            },
+          },
+          required: ["apiUuid"],
+        },
+      },
+      {
+        name: "get_api_improvements",
+        description: "Get improvement metrics for an API",
+        inputSchema: {
+          type: "object",
+          properties: {
+            apiUuid: {
+              type: "string",
+              description: "The API UUID from x-api-id",
+            },
+          },
+          required: ["apiUuid"],
+        },
+      },
+      {
+        name: "compare_api_versions",
+        description: "Compare two API versions",
+        inputSchema: {
+          type: "object",
+          properties: {
+            baselineContent: {
+              type: "string",
+              description: "Baseline OpenAPI content (base64)",
+            },
+            candidateContent: {
+              type: "string",
+              description: "Candidate OpenAPI content (base64)",
+            },
+          },
+          required: ["baselineContent", "candidateContent"],
+        },
+      },
+      {
+        name: "get_api_analytics",
+        description: "Get comprehensive analytics for an API",
+        inputSchema: {
+          type: "object",
+          properties: {
+            apiUuid: {
+              type: "string",
+              description: "The API UUID from x-api-id",
+            },
+          },
+          required: ["apiUuid"],
+        },
+      },
     ],
   };
 });
@@ -387,6 +482,72 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               },
             ],
           };
+        }
+
+      case "generate_api_id":
+        if (USE_REMOTE) {
+          const result = await callRemoteAPI("tools/call", {
+            name: "generate_api_id",
+            arguments: args || {},
+          });
+          return { content: result.content };
+        } else {
+          throw new Error("generate_api_id is only available in remote mode");
+        }
+
+      case "validate_api_id":
+        if (USE_REMOTE) {
+          const result = await callRemoteAPI("tools/call", {
+            name: "validate_api_id",
+            arguments: args || {},
+          });
+          return { content: result.content };
+        } else {
+          throw new Error("validate_api_id is only available in remote mode");
+        }
+
+      case "get_api_history":
+        if (USE_REMOTE) {
+          const result = await callRemoteAPI("tools/call", {
+            name: "get_api_history",
+            arguments: args || {},
+          });
+          return { content: result.content };
+        } else {
+          throw new Error("get_api_history is only available in remote mode");
+        }
+
+      case "get_api_improvements":
+        if (USE_REMOTE) {
+          const result = await callRemoteAPI("tools/call", {
+            name: "get_api_improvements",
+            arguments: args || {},
+          });
+          return { content: result.content };
+        } else {
+          throw new Error("get_api_improvements is only available in remote mode");
+        }
+
+      case "compare_api_versions":
+        if (USE_REMOTE) {
+          const result = await callRemoteAPI("tools/call", {
+            name: "compare_api_versions",
+            arguments: args || {},
+          });
+          return { content: result.content };
+        } else {
+          throw new Error("compare_api_versions is only available in remote mode");
+        }
+
+      case "get_api_analytics":
+        if (USE_REMOTE) {
+          const result = await callRemoteAPI("tools/call", {
+            name: "get_api_analytics",
+            arguments: args || {},
+          });
+          return { content: result.content };
+        } else {
+          throw new Error("get_api_analytics is only available in remote mode");
         }
 
       default:
