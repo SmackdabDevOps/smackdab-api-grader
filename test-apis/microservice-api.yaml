@@ -1,0 +1,133 @@
+openapi: 3.0.0
+info:
+  title: Order Processing Microservice
+  version: 1.0.0
+  description: Microservice for processing orders in the e-commerce platform
+  x-api-id: ms_orders_2024_12_01
+servers:
+  - url: http://orders-service:8080
+    description: Kubernetes internal service
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns service health status
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+                  version:
+                    type: string
+  /ready:
+    get:
+      summary: Readiness probe
+      description: Indicates if service is ready to accept traffic
+      responses:
+        '200':
+          description: Service is ready
+        '503':
+          description: Service not ready
+  /metrics:
+    get:
+      summary: Prometheus metrics endpoint
+      description: Exposes metrics for monitoring
+      responses:
+        '200':
+          description: Metrics in Prometheus format
+          content:
+            text/plain:
+              schema:
+                type: string
+  /api/v1/orders:
+    post:
+      summary: Create new order
+      parameters:
+        - in: header
+          name: X-Request-ID
+          required: true
+          schema:
+            type: string
+          description: Distributed tracing request ID
+        - in: header
+          name: X-B3-TraceId
+          required: true
+          schema:
+            type: string
+          description: Zipkin B3 trace ID
+        - in: header
+          name: X-B3-SpanId
+          required: true
+          schema:
+            type: string
+          description: Zipkin B3 span ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customerId:
+                  type: string
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      productId:
+                        type: string
+                      quantity:
+                        type: integer
+      responses:
+        '201':
+          description: Order created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orderId:
+                    type: string
+                  status:
+                    type: string
+      security:
+        - bearerAuth: []
+  /api/v1/orders/{orderId}:
+    get:
+      summary: Get order by ID
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: X-Request-ID
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: X-B3-TraceId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order details
+        '404':
+          description: Order not found
+      security:
+        - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

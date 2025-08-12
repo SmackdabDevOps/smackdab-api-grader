@@ -1,0 +1,74 @@
+template 5%load 10%prerequisites 15%Prerequisite rule PREREQ-API-ID not found in registry
+fail-prerequisites 100%
+ {
+  "grade": {
+    "total": 0,
+    "letter": "F",
+    "compliancePct": 0,
+    "autoFailTriggered": true,
+    "criticalIssues": 6,
+    "perCategory": {},
+    "autoFailReasons": [
+      "OpenAPI Version: OpenAPI version is undefined, must be 3.0.3",
+      "Security Schemes: No security schemes defined",
+      "API specification missing required x-api-id. Generate one using generate_api_id tool.",
+      "Missing openapi field",
+      "Missing info object",
+      "No paths defined"
+    ],
+    "blockedByPrerequisites": true,
+    "prerequisiteFailures": 6
+  },
+  "findings": [
+    {
+      "ruleId": "PREREQ-001",
+      "message": "OpenAPI Version: OpenAPI version is undefined, must be 3.0.3",
+      "severity": "critical",
+      "jsonPath": "$.openapi",
+      "category": "functionality"
+    },
+    {
+      "ruleId": "PREREQ-002",
+      "message": "Security Schemes: No security schemes defined",
+      "severity": "critical",
+      "jsonPath": "$.components.securitySchemes",
+      "category": "security"
+    },
+    {
+      "ruleId": "PREREQ-API-ID",
+      "message": "API specification missing required x-api-id. Generate one using generate_api_id tool.",
+      "severity": "critical",
+      "jsonPath": "$.info",
+      "category": "prerequisites"
+    },
+    {
+      "ruleId": "PREREQ-STRUCT",
+      "message": "Missing openapi field",
+      "severity": "critical",
+      "jsonPath": "$"
+    },
+    {
+      "ruleId": "PREREQ-STRUCT",
+      "message": "Missing info object",
+      "severity": "critical",
+      "jsonPath": "$"
+    },
+    {
+      "ruleId": "PREREQ-STRUCT",
+      "message": "No paths defined",
+      "severity": "critical",
+      "jsonPath": "$"
+    }
+  ],
+  "checkpoints": [],
+  "metadata": {
+    "specHash": "ae98d4424804c03a9077fabc43bc4d5208f0fcac84833e92388c68a86f6ef471",
+    "templateHash": "88a1e0615e838e460b3b6f7bc65983f52d82d95e5028e57c5ac98ad0f3af3b82",
+    "rulesetHash": "none",
+    "templateVersion": "3.2.3",
+    "toolVersions": {
+      "grader": "2.0.0"
+    },
+    "scoringEngine": "coverage-based"
+  }
+}

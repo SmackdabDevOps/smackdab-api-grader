@@ -1,0 +1,308 @@
+name: API Grader CI/CD
+description: Grade APIs in your CI/CD pipeline
+
+inputs:
+  api-key:
+    description: 'API Grader API key'
+    required: true
+  api-files:
+    description: 'Pattern for API files to grade'
+    required: false
+    default: '**/*.{yaml,yml,json}'
+  min-grade:
+    description: 'Minimum acceptable grade (0-100)'
+    required: false
+    default: '70'
+  fail-on-errors:
+    description: 'Fail the workflow if errors are found'
+    required: false
+    default: 'true'
+  auto-fix:
+    description: 'Automatically apply fixes and commit'
+    required: false
+    default: 'false'
+  generate-report:
+    description: 'Generate detailed HTML report'
+    required: false
+    default: 'true'
+  upload-results:
+    description: 'Upload results to API Grader dashboard'
+    required: false
+    default: 'true'
+  compliance-checks:
+    description: 'Compliance standards to check (comma-separated)'
+    required: false
+    default: 'OpenAPI,REST,OWASP'
+  security-scan:
+    description: 'Run security vulnerability scan'
+    required: false
+    default: 'true'
+  performance-test:
+    description: 'Run performance tests on APIs'
+    required: false
+    default: 'false'
+  comment-pr:
+    description: 'Comment grading results on PR'
+    required: false
+    default: 'true'
+
+outputs:
+  grade:
+    description: 'Overall API grade'
+    value: ${{ steps.grade.outputs.grade }}
+  issues-count:
+    description: 'Number of issues found'
+    value: ${{ steps.grade.outputs.issues }}
+  report-url:
+    description: 'URL to detailed report'
+    value: ${{ steps.grade.outputs.report-url }}
+  fixed-count:
+    description: 'Number of issues auto-fixed'
+    value: ${{ steps.fix.outputs.fixed }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup API Grader
+      shell: bash
+      run: |
+        echo "Installing API Grader CLI..."
+        npm install -g @apigrader/cli
+        apigrader configure --api-key=${{ inputs.api-key }}
+    
+    - name: Find API Files
+      id: find-files
+      shell: bash
+      run: |
+        echo "Finding API specification files..."
+        files=$(find . -type f \( -name "*.yaml" -o -name "*.yml" -o -name "*.json" \) | grep -E "(openapi|swagger|asyncapi|graphql)" | head -20)
+        echo "Found $(echo "$files" | wc -l) API files"
+        echo "::set-output name=files::$files"
+    
+    - name: Grade APIs
+      id: grade
+      shell: bash
+      run: |
+        echo "Grading API specifications..."
+        
+        total_grade=0
+        total_issues=0
+        file_count=0
+        results=""
+        
+        for file in ${{ steps.find-files.outputs.files }}; do
+          echo "Grading $file..."
+          
+          result=$(apigrader grade "$file" --format=json)
+          grade=$(echo "$result" | jq -r '.grade')
+          issues=$(echo "$result" | jq -r '.issues | length')
+          
+          total_grade=$((total_grade + grade))
+          total_issues=$((total_issues + issues))
+          file_count=$((file_count + 1))
+          
+          results="$results\n- $file: Grade $grade/100, Issues: $issues"
+          
+          if [ "$grade" -lt "${{ inputs.min-grade }}" ]; then
+            echo "::warning file=$file::API grade $grade is below minimum threshold ${{ inputs.min-grade }}"
+          fi
+        done
+        
+        if [ "$file_count" -gt 0 ]; then
+          avg_grade=$((total_grade / file_count))
+        else
+          avg_grade=0
+        fi
+        
+        echo "::set-output name=grade::$avg_grade"
+        echo "::set-output name=issues::$total_issues"
+        echo "::set-output name=results::$results"
+        
+        echo "## API Grading Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Average Grade**: $avg_grade/100" >> $GITHUB_STEP_SUMMARY
+        echo "- **Total Issues**: $total_issues" >> $GITHUB_STEP_SUMMARY
+        echo "- **Files Graded**: $file_count" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### File Results" >> $GITHUB_STEP_SUMMARY
+        echo -e "$results" >> $GITHUB_STEP_SUMMARY
+    
+    - name: Run Compliance Checks
+      if: inputs.compliance-checks != ''
+      shell: bash
+      run: |
+        echo "Running compliance checks..."
+        
+        IFS=',' read -ra STANDARDS <<< "${{ inputs.compliance-checks }}"
+        for standard in "${STANDARDS[@]}"; do
+          echo "Checking $standard compliance..."
+          apigrader compliance --standard="$standard" --files="${{ steps.find-files.outputs.files }}"
+        done
+    
+    - name: Security Scan
+      if: inputs.security-scan == 'true'
+      shell: bash
+      run: |
+        echo "Running security vulnerability scan..."
+        
+        vulnerabilities=0
+        
+        for file in ${{ steps.find-files.outputs.files }}; do
+          echo "Scanning $file for security issues..."
+          
+          result=$(apigrader security-scan "$file" --format=json)
+          vulns=$(echo "$result" | jq -r '.vulnerabilities | length')
+          vulnerabilities=$((vulnerabilities + vulns))
+          
+          if [ "$vulns" -gt 0 ]; then
+            echo "::error file=$file::Found $vulns security vulnerabilities"
+            echo "$result" | jq -r '.vulnerabilities[] | "::warning file=$file,line=\(.line)::Security: \(.message)"'
+          fi
+        done
+        
+        if [ "$vulnerabilities" -gt 0 ]; then
+          echo "::error::Found $vulnerabilities total security vulnerabilities"
+          if [ "${{ inputs.fail-on-errors }}" == "true" ]; then
+            exit 1
+          fi
+        fi
+    
+    - name: Performance Tests
+      if: inputs.performance-test == 'true'
+      shell: bash
+      run: |
+        echo "Running API performance tests..."
+        
+        for file in ${{ steps.find-files.outputs.files }}; do
+          echo "Testing performance for $file..."
+          apigrader performance-test "$file" --iterations=100 --concurrent=10
+        done
+    
+    - name: Auto-Fix Issues
+      id: fix
+      if: inputs.auto-fix == 'true'
+      shell: bash
+      run: |
+        echo "Applying automatic fixes..."
+        
+        fixed_count=0
+        
+        for file in ${{ steps.find-files.outputs.files }}; do
+          echo "Attempting to fix issues in $file..."
+          
+          result=$(apigrader fix "$file" --auto --format=json)
+          fixed=$(echo "$result" | jq -r '.fixed | length')
+          fixed_count=$((fixed_count + fixed))
+          
+          if [ "$fixed" -gt 0 ]; then
+            echo "Fixed $fixed issues in $file"
+          fi
+        done
+        
+        echo "::set-output name=fixed::$fixed_count"
+        
+        if [ "$fixed_count" -gt 0 ]; then
+          echo "## Auto-Fixed Issues" >> $GITHUB_STEP_SUMMARY
+          echo "Automatically fixed **$fixed_count** issues" >> $GITHUB_STEP_SUMMARY
+        fi
+    
+    - name: Commit Fixes
+      if: inputs.auto-fix == 'true' && steps.fix.outputs.fixed != '0'
+      shell: bash
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add -A
+        git diff --staged --quiet || git commit -m "Auto-fix API issues
+
+        Fixed ${{ steps.fix.outputs.fixed }} issues identified by API Grader"
+        git push
+    
+    - name: Generate Report
+      if: inputs.generate-report == 'true'
+      shell: bash
+      run: |
+        echo "Generating detailed report..."
+        
+        apigrader report \
+          --files="${{ steps.find-files.outputs.files }}" \
+          --format=html \
+          --output=api-grading-report.html
+        
+        echo "Report generated: api-grading-report.html"
+    
+    - name: Upload Report Artifact
+      if: inputs.generate-report == 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: api-grading-report
+        path: api-grading-report.html
+    
+    - name: Upload Results to Dashboard
+      id: upload
+      if: inputs.upload-results == 'true'
+      shell: bash
+      run: |
+        echo "Uploading results to API Grader dashboard..."
+        
+        result=$(apigrader upload \
+          --project="${{ github.repository }}" \
+          --branch="${{ github.ref_name }}" \
+          --commit="${{ github.sha }}" \
+          --pr="${{ github.event.pull_request.number }}" \
+          --format=json)
+        
+        report_url=$(echo "$result" | jq -r '.url')
+        echo "::set-output name=report-url::$report_url"
+        
+        echo "Results uploaded: $report_url"
+    
+    - name: Comment on PR
+      if: github.event_name == 'pull_request' && inputs.comment-pr == 'true'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const grade = '${{ steps.grade.outputs.grade }}';
+          const issues = '${{ steps.grade.outputs.issues }}';
+          const fixed = '${{ steps.fix.outputs.fixed }}';
+          const reportUrl = '${{ steps.upload.outputs.report-url }}';
+          
+          const gradeEmoji = grade >= 90 ? '🟢' : grade >= 70 ? '🟡' : '🔴';
+          
+          const comment = `## ${gradeEmoji} API Grading Results
+          
+          **Grade**: ${grade}/100
+          **Issues Found**: ${issues}
+          ${fixed > 0 ? `**Issues Fixed**: ${fixed}` : ''}
+          
+          ${reportUrl ? `[View Detailed Report](${reportUrl})` : ''}
+          
+          <details>
+          <summary>File Results</summary>
+          
+          \`\`\`
+          ${{ steps.grade.outputs.results }}
+          \`\`\`
+          </details>
+          
+          ---
+          *Graded by [API Grader](https://apigrader.com)*`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+    
+    - name: Check Grade Threshold
+      if: inputs.fail-on-errors == 'true'
+      shell: bash
+      run: |
+        if [ "${{ steps.grade.outputs.grade }}" -lt "${{ inputs.min-grade }}" ]; then
+          echo "::error::API grade ${{ steps.grade.outputs.grade }} is below minimum threshold ${{ inputs.min-grade }}"
+          exit 1
+        fi
+
+branding:
+  icon: 'check-circle'
+  color: 'green'

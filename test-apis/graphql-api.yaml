@@ -1,0 +1,60 @@
+openapi: 3.0.0
+info:
+  title: User Management GraphQL Gateway
+  version: 1.0.0
+  description: GraphQL API for user management
+  x-api-id: gql_user_2024_12_01
+servers:
+  - url: https://api.example.com
+    description: Production GraphQL Gateway
+paths:
+  /graphql:
+    post:
+      summary: GraphQL Endpoint
+      description: Execute GraphQL queries and mutations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                  description: GraphQL query or mutation
+                variables:
+                  type: object
+                  description: GraphQL variables
+                operationName:
+                  type: string
+                  description: Operation name for batched queries
+      responses:
+        '200':
+          description: GraphQL response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    description: Query result data
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        message:
+                          type: string
+                        locations:
+                          type: array
+                        path:
+                          type: array
+      security:
+        - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -66,7 +66,16 @@ export async function version() {
 async function loadSpec(path:string){
   const raw = await fs.readFile(path,'utf8');
   const doc = parseDocument(raw, { keepNodeTypes:true } as any);
-  return { js: doc.toJS(), raw };
+  const js = doc.toJS();
+  
+  // Debug logging
+  if (!js || typeof js !== 'object') {
+    console.error(`ERROR: Failed to parse YAML from ${path}`);
+    console.error('Raw content (first 200 chars):', raw.substring(0, 200));
+    console.error('Parsed result:', js);
+  }
+  
+  return { js, raw };
 }
 
 function sha256(s:string){ return crypto.createHash('sha256').update(s).digest('hex'); }

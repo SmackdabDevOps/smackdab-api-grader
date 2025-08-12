@@ -120,4 +120,57 @@ export class GraderDB {
                FROM run WHERE api_id = ? ${where} ORDER BY graded_at DESC LIMIT ?`;
     return this.db.all(q, ...params);
   }
+
+  // Add missing getApiHistory method that's being called in the REST API
+  async getApiHistory(apiUuid: string): Promise<any[]> {
+    if (!this.db) throw new Error('DB not connected');
+    
+    // First try to connect if not connected
+    if (!this.db) {
+      await this.connect();
+    }
+    
+    const history = await this.db.all(
+      `SELECT 
+        run_id,
+        graded_at as timestamp,
+        total_score as totalScore,
+        letter_grade as finalGrade,
+        spec_hash as specHash,
+        template_version as apiVersion
+       FROM run 
+       WHERE api_id = ? 
+       ORDER BY graded_at DESC 
+       LIMIT 100`,
+      apiUuid
+    );
+    
+    return history || [];
+  }
+
+  // Add method to check for existing grade by spec hash
+  async getExistingGrade(specHash: string): Promise<any | null> {
+    if (!this.db) {
+      await this.connect();
+    }
+    
+    const existingRun = await this.db.get(
+      `SELECT json_report, graded_at, total_score, letter_grade 
+       FROM run 
+       WHERE spec_hash = ? 
+       ORDER BY graded_at DESC 
+       LIMIT 1`,
+      specHash
+    );
+    
+    return existingRun;
+  }
+
+  // Add close method
+  async close() {
+    if (this.db) {
+      await this.db.close();
+      this.db = undefined;
+    }
+  }
 }

@@ -1,0 +1,101 @@
+template 5%load 10%prerequisites 15%Prerequisite rule PREREQ-API-ID not found in registry
+fail-prerequisites 100%
+ {
+  "grade": {
+    "total": 0,
+    "letter": "F",
+    "compliancePct": 0,
+    "autoFailTriggered": true,
+    "criticalIssues": 9,
+    "perCategory": {},
+    "autoFailReasons": [
+      "Security Schemes: No security schemes defined",
+      "POST /api/v2/profiles: Missing X-Organization-ID header",
+      "PATCH /api/v2/profiles/{profileId}: Missing X-Organization-ID header",
+      "DELETE /api/v2/profiles/{profileId}: Missing X-Organization-ID header",
+      "POST /api/v2/profiles/detect: Missing X-Organization-ID header",
+      "PUT /api/v2/profiles/{profileId}/rules: Missing X-Organization-ID header",
+      "POST /api/v2/profiles/from-template: Missing X-Organization-ID header",
+      "PUT /api/v2/grading-sessions/{sessionId}/profile: Missing X-Organization-ID header",
+      "Invalid x-api-id format. Use generate_api_id tool to create valid ID."
+    ],
+    "blockedByPrerequisites": true,
+    "prerequisiteFailures": 9
+  },
+  "findings": [
+    {
+      "ruleId": "PREREQ-002",
+      "message": "Security Schemes: No security schemes defined",
+      "severity": "critical",
+      "jsonPath": "$.components.securitySchemes",
+      "category": "security"
+    },
+    {
+      "ruleId": "PREREQ-003",
+      "message": "POST /api/v2/profiles: Missing X-Organization-ID header",
+      "severity": "critical",
+      "jsonPath": "$.paths['/api/v2/profiles'].post",
+      "category": "security"
+    },
+    {
+      "ruleId": "PREREQ-003",
+      "message": "PATCH /api/v2/profiles/{profileId}: Missing X-Organization-ID header",
+      "severity": "critical",
+      "jsonPath": "$.paths['/api/v2/profiles/{profileId}'].patch",
+      "category": "security"
+    },
+    {
+      "ruleId": "PREREQ-003",
+      "message": "DELETE /api/v2/profiles/{profileId}: Missing X-Organization-ID header",
+      "severity": "critical",
+      "jsonPath": "$.paths['/api/v2/profiles/{profileId}'].delete",
+      "category": "security"
+    },
+    {
+      "ruleId": "PREREQ-003",
+      "message": "POST /api/v2/profiles/detect: Missing X-Organization-ID header",
+      "severity": "critical",
+      "jsonPath": "$.paths['/api/v2/profiles/detect'].post",
+      "category": "security"
+    },
+    {
+      "ruleId": "PREREQ-003",
+      "message": "PUT /api/v2/profiles/{profileId}/rules: Missing X-Organization-ID header",
+      "severity": "critical",
+      "jsonPath": "$.paths['/api/v2/profiles/{profileId}/rules'].put",
+      "category": "security"
+    },
+    {
+      "ruleId": "PREREQ-003",
+      "message": "POST /api/v2/profiles/from-template: Missing X-Organization-ID header",
+      "severity": "critical",
+      "jsonPath": "$.paths['/api/v2/profiles/from-template'].post",
+      "category": "security"
+    },
+    {
+      "ruleId": "PREREQ-003",
+      "message": "PUT /api/v2/grading-sessions/{sessionId}/profile: Missing X-Organization-ID header",
+      "severity": "critical",
+      "jsonPath": "$.paths['/api/v2/grading-sessions/{sessionId}/profile'].put",
+      "category": "security"
+    },
+    {
+      "ruleId": "PREREQ-API-ID-FORMAT",
+      "message": "Invalid x-api-id format. Use generate_api_id tool to create valid ID.",
+      "severity": "critical",
+      "jsonPath": "$.info.x-api-id",
+      "category": "prerequisites"
+    }
+  ],
+  "checkpoints": [],
+  "metadata": {
+    "specHash": "45818d58302b4032e0f1cb3a981b943487478ed98104d9d4d596271a0255b221",
+    "templateHash": "88a1e0615e838e460b3b6f7bc65983f52d82d95e5028e57c5ac98ad0f3af3b82",
+    "rulesetHash": "none",
+    "templateVersion": "3.2.3",
+    "toolVersions": {
+      "grader": "2.0.0"
+    },
+    "scoringEngine": "coverage-based"
+  }
+}

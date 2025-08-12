@@ -1,0 +1,1029 @@
+# ============================================================================
+# API GRADER MCP SERVER - PHASE 2 COMPLETE API CONTRACT
+# ============================================================================
+# This is for the API Grader MCP Server - NOT SMACKDAB!
+# Deployed on Render.com
+# ============================================================================
+
+openapi: 3.0.3
+
+info:
+  title: API Grader MCP - Phase 2 Context-Aware System
+  description: |
+    # API Grader MCP Server - Phase 2 APIs
+    
+    This contract defines ALL Phase 2 endpoints for making the API Grader 
+    context-aware and adaptive, instead of rigidly applying Smackdab rules 
+    to everything.
+    
+    ## THIS IS NOT A SMACKDAB API!
+    This is the API Grader MCP Server that grades other APIs.
+    
+    ## Phase 2 Features
+    - Profile System: Different rules for different API types
+    - Adaptive Scoring: Context-aware weight adjustments
+    - Pattern Detection: Auto-detect API types and patterns
+    - Business Context: Understand industry requirements
+    - Intelligent Feedback: Actionable improvement suggestions
+    - Migration Tools: Transition from rigid to adaptive grading
+    
+  version: 2.0.0
+  x-api-id: api_1754946500000_gradermcp0001
+  contact:
+    name: API Grader MCP Team
+    email: support@api-grader-mcp.dev
+    url: https://github.com/api-grader-mcp
+
+servers:
+  - url: https://api-grader-mcp.onrender.com
+    description: Production (Render.com)
+  - url: http://localhost:8000
+    description: Local development
+
+security:
+  - bearerAuth: []
+  - apiKey: []
+
+tags:
+  - name: Profiles
+    description: API profile management
+  - name: Scoring
+    description: Adaptive scoring system
+  - name: Detection
+    description: Pattern detection engine
+  - name: Context
+    description: Business context awareness
+  - name: Feedback
+    description: Intelligent feedback generation
+  - name: Admin
+    description: Administration and migration
+
+paths:
+  # ============================================================================
+  # EPIC 1: PROFILE SYSTEM
+  # ============================================================================
+  
+  /api/v2/profiles:
+    get:
+      summary: List grading profiles
+      description: Get all available API grading profiles
+      operationId: listProfiles
+      tags: [Profiles]
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [REST, GraphQL, gRPC, Microservice, SaaS]
+        - name: active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Profile'
+
+    post:
+      summary: Create grading profile
+      description: Define new API grading profile
+      operationId: createProfile
+      tags: [Profiles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileCreate'
+      responses:
+        '201':
+          description: Profile created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+
+  /api/v2/profiles/{profileId}:
+    parameters:
+      - $ref: '#/components/parameters/ProfileId'
+    
+    get:
+      summary: Get profile details
+      operationId: getProfile
+      tags: [Profiles]
+      responses:
+        '200':
+          description: Profile details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+
+    patch:
+      summary: Update profile
+      operationId: updateProfile
+      tags: [Profiles]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+
+    delete:
+      summary: Delete profile
+      operationId: deleteProfile
+      tags: [Profiles]
+      responses:
+        '204':
+          description: Profile deleted
+
+  /api/v2/profiles/{profileId}/rules:
+    parameters:
+      - $ref: '#/components/parameters/ProfileId'
+    
+    get:
+      summary: Get profile rules
+      operationId: getProfileRules
+      tags: [Profiles]
+      responses:
+        '200':
+          description: Profile rules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProfileRule'
+
+    put:
+      summary: Update profile rules
+      operationId: updateProfileRules
+      tags: [Profiles]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rules:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ProfileRule'
+      responses:
+        '200':
+          description: Rules updated
+
+  /api/v2/profiles/detect:
+    post:
+      summary: Auto-detect API profile
+      description: Analyze API spec to detect appropriate profile
+      operationId: detectProfile
+      tags: [Profiles, Detection]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                openapi_spec:
+                  type: object
+                  description: OpenAPI specification
+          application/yaml:
+            schema:
+              type: string
+              description: Raw YAML content
+      responses:
+        '200':
+          description: Detection result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectionResult'
+
+  # ============================================================================
+  # EPIC 2: ADAPTIVE SCORING
+  # ============================================================================
+  
+  /api/v2/scoring/calculate-weights:
+    post:
+      summary: Calculate dynamic weights
+      description: Calculate rule weights based on profile and context
+      operationId: calculateWeights
+      tags: [Scoring]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                profile_id:
+                  type: string
+                rule_set:
+                  type: array
+                  items:
+                    type: string
+                context:
+                  type: object
+      responses:
+        '200':
+          description: Weight calculations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeightCalculation'
+
+  /api/v2/scoring/evaluate:
+    post:
+      summary: Evaluate with priorities
+      description: Score API with priority-based evaluation
+      operationId: evaluateScoring
+      tags: [Scoring]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                violations:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Violation'
+                profile_id:
+                  type: string
+      responses:
+        '200':
+          description: Scoring result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoringResult'
+
+  /api/v2/scoring/profiles/{profileId}/thresholds:
+    parameters:
+      - $ref: '#/components/parameters/ProfileId'
+    
+    get:
+      summary: Get scoring thresholds
+      operationId: getScoringThresholds
+      tags: [Scoring]
+      responses:
+        '200':
+          description: Threshold configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThresholdConfig'
+
+    put:
+      summary: Update scoring thresholds
+      operationId: updateScoringThresholds
+      tags: [Scoring]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThresholdConfig'
+      responses:
+        '200':
+          description: Thresholds updated
+
+  # ============================================================================
+  # EPIC 3: CONTEXT DETECTION
+  # ============================================================================
+  
+  /api/v2/detection/patterns:
+    post:
+      summary: Detect API patterns
+      description: Analyze API for architectural patterns
+      operationId: detectPatterns
+      tags: [Detection]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                openapi_spec:
+                  type: object
+      responses:
+        '200':
+          description: Detected patterns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatternAnalysis'
+
+  /api/v2/detection/ml/train:
+    post:
+      summary: Train detection model
+      description: Submit training data for ML model
+      operationId: trainDetectionModel
+      tags: [Detection]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                samples:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      spec:
+                        type: object
+                      profile_type:
+                        type: string
+                      confidence:
+                        type: number
+      responses:
+        '202':
+          description: Training initiated
+
+  /api/v2/detection/cache:
+    get:
+      summary: Get detection cache stats
+      operationId: getDetectionCache
+      tags: [Detection]
+      responses:
+        '200':
+          description: Cache statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hits:
+                    type: integer
+                  misses:
+                    type: integer
+                  accuracy:
+                    type: number
+
+    delete:
+      summary: Clear detection cache
+      operationId: clearDetectionCache
+      tags: [Detection]
+      responses:
+        '204':
+          description: Cache cleared
+
+  # ============================================================================
+  # EPIC 4: BUSINESS CONTEXT
+  # ============================================================================
+  
+  /api/v2/context/industry/{industry}:
+    parameters:
+      - name: industry
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [healthcare, finance, retail, government, education]
+    
+    get:
+      summary: Get industry requirements
+      operationId: getIndustryRequirements
+      tags: [Context]
+      responses:
+        '200':
+          description: Industry-specific requirements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndustryRequirements'
+
+  /api/v2/context/compliance:
+    get:
+      summary: List compliance frameworks
+      operationId: listComplianceFrameworks
+      tags: [Context]
+      responses:
+        '200':
+          description: Available compliance frameworks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  frameworks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ComplianceFramework'
+
+  /api/v2/context/analyze:
+    post:
+      summary: Analyze business context
+      description: Determine business context from API spec
+      operationId: analyzeContext
+      tags: [Context]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                openapi_spec:
+                  type: object
+                hints:
+                  type: object
+                  properties:
+                    industry:
+                      type: string
+                    compliance:
+                      type: array
+                      items:
+                        type: string
+      responses:
+        '200':
+          description: Context analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextAnalysis'
+
+  # ============================================================================
+  # EPIC 5: INTELLIGENT FEEDBACK
+  # ============================================================================
+  
+  /api/v2/feedback/generate:
+    post:
+      summary: Generate improvement feedback
+      description: Create actionable improvement suggestions
+      operationId: generateFeedback
+      tags: [Feedback]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grading_result:
+                  type: object
+                profile_id:
+                  type: string
+                context:
+                  type: object
+      responses:
+        '200':
+          description: Generated feedback
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackReport'
+
+  /api/v2/feedback/templates:
+    get:
+      summary: List feedback templates
+      operationId: listFeedbackTemplates
+      tags: [Feedback]
+      responses:
+        '200':
+          description: Available templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FeedbackTemplate'
+
+  /api/v2/feedback/examples/{violationType}:
+    parameters:
+      - name: violationType
+        in: path
+        required: true
+        schema:
+          type: string
+    
+    get:
+      summary: Get fix examples
+      description: Get examples of how to fix specific violations
+      operationId: getFixExamples
+      tags: [Feedback]
+      responses:
+        '200':
+          description: Fix examples
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixExamples'
+
+  # ============================================================================
+  # EPIC 6: MIGRATION & ADMIN
+  # ============================================================================
+  
+  /api/v2/admin/migration/analyze:
+    post:
+      summary: Analyze for migration
+      description: Analyze current setup for migration to Phase 2
+      operationId: analyzeMigration
+      tags: [Admin]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                current_config:
+                  type: object
+      responses:
+        '200':
+          description: Migration analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MigrationAnalysis'
+
+  /api/v2/admin/migration/execute:
+    post:
+      summary: Execute migration
+      description: Perform migration to Phase 2 system
+      operationId: executeMigration
+      tags: [Admin]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                migration_plan:
+                  type: object
+                dry_run:
+                  type: boolean
+                  default: true
+      responses:
+        '202':
+          description: Migration started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MigrationStatus'
+
+  /api/v2/admin/config/export:
+    get:
+      summary: Export configuration
+      operationId: exportConfig
+      tags: [Admin]
+      responses:
+        '200':
+          description: Configuration export
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/v2/admin/config/import:
+    post:
+      summary: Import configuration
+      operationId: importConfig
+      tags: [Admin]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Configuration imported
+
+  /api/v2/admin/analytics:
+    get:
+      summary: Get system analytics
+      operationId: getAnalytics
+      tags: [Admin]
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Analytics data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Analytics'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    ProfileId:
+      name: profileId
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    Profile:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [REST, GraphQL, gRPC, Microservice, SaaS]
+        description:
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileRule'
+        detection_patterns:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProfileCreate:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [REST, GraphQL, gRPC, Microservice, SaaS]
+        description:
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileRule'
+
+    ProfileUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileRule'
+
+    ProfileRule:
+      type: object
+      properties:
+        rule_id:
+          type: string
+        weight:
+          type: number
+          minimum: 0
+          maximum: 100
+        category:
+          type: string
+          enum: [required, optional, disabled]
+        severity_override:
+          type: string
+          enum: [error, warning, info]
+
+    DetectionResult:
+      type: object
+      properties:
+        detected_profile:
+          $ref: '#/components/schemas/Profile'
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        alternatives:
+          type: array
+          items:
+            type: object
+            properties:
+              profile:
+                $ref: '#/components/schemas/Profile'
+              confidence:
+                type: number
+        reasoning:
+          type: object
+
+    WeightCalculation:
+      type: object
+      properties:
+        weights:
+          type: object
+          additionalProperties:
+            type: number
+        total:
+          type: number
+        adjustments:
+          type: array
+          items:
+            type: object
+            properties:
+              rule_id:
+                type: string
+              original:
+                type: number
+              adjusted:
+                type: number
+              reason:
+                type: string
+
+    Violation:
+      type: object
+      properties:
+        rule_id:
+          type: string
+        severity:
+          type: string
+        message:
+          type: string
+        location:
+          type: string
+
+    ScoringResult:
+      type: object
+      properties:
+        total_score:
+          type: number
+        letter_grade:
+          type: string
+        priority_breakdown:
+          type: object
+          properties:
+            critical:
+              type: object
+              properties:
+                score:
+                  type: number
+                violations:
+                  type: integer
+            high:
+              type: object
+              properties:
+                score:
+                  type: number
+                violations:
+                  type: integer
+            medium:
+              type: object
+              properties:
+                score:
+                  type: number
+                violations:
+                  type: integer
+            low:
+              type: object
+              properties:
+                score:
+                  type: number
+                violations:
+                  type: integer
+
+    ThresholdConfig:
+      type: object
+      properties:
+        pass_threshold:
+          type: number
+        excellence_threshold:
+          type: number
+        critical_fail_rules:
+          type: array
+          items:
+            type: string
+        priority_weights:
+          type: object
+
+    PatternAnalysis:
+      type: object
+      properties:
+        patterns:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              confidence:
+                type: number
+              indicators:
+                type: array
+                items:
+                  type: string
+        api_style:
+          type: string
+        architectural_patterns:
+          type: array
+          items:
+            type: string
+
+    IndustryRequirements:
+      type: object
+      properties:
+        industry:
+          type: string
+        requirements:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              description:
+                type: string
+              mandatory:
+                type: boolean
+              rules:
+                type: array
+                items:
+                  type: string
+
+    ComplianceFramework:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        requirements:
+          type: array
+          items:
+            type: string
+
+    ContextAnalysis:
+      type: object
+      properties:
+        industry:
+          type: string
+        compliance_frameworks:
+          type: array
+          items:
+            type: string
+        business_criticality:
+          type: string
+          enum: [low, medium, high, critical]
+        recommended_profile:
+          type: string
+
+    FeedbackReport:
+      type: object
+      properties:
+        summary:
+          type: string
+        improvements:
+          type: array
+          items:
+            type: object
+            properties:
+              priority:
+                type: string
+                enum: [critical, high, medium, low]
+              title:
+                type: string
+              description:
+                type: string
+              fix_steps:
+                type: array
+                items:
+                  type: string
+              examples:
+                type: array
+                items:
+                  type: string
+              effort:
+                type: string
+                enum: [trivial, easy, moderate, hard]
+              impact:
+                type: string
+                enum: [minor, moderate, major, critical]
+
+    FeedbackTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        violation_type:
+          type: string
+        template:
+          type: string
+
+    FixExamples:
+      type: object
+      properties:
+        violation_type:
+          type: string
+        examples:
+          type: array
+          items:
+            type: object
+            properties:
+              before:
+                type: string
+              after:
+                type: string
+              explanation:
+                type: string
+
+    MigrationAnalysis:
+      type: object
+      properties:
+        current_version:
+          type: string
+        target_version:
+          type: string
+        compatibility_score:
+          type: number
+        required_changes:
+          type: array
+          items:
+            type: string
+        estimated_effort:
+          type: string
+        risks:
+          type: array
+          items:
+            type: string
+
+    MigrationStatus:
+      type: object
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        progress:
+          type: number
+        steps_completed:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            type: string
+
+    Analytics:
+      type: object
+      properties:
+        total_gradings:
+          type: integer
+        profile_usage:
+          type: object
+          additionalProperties:
+            type: integer
+        average_scores:
+          type: object
+          additionalProperties:
+            type: number
+        common_violations:
+          type: array
+          items:
+            type: object
+            properties:
+              rule_id:
+                type: string
+              count:
+                type: integer
+        detection_accuracy:
+          type: number

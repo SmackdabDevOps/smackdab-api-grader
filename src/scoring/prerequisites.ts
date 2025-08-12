@@ -99,10 +99,17 @@ export function checkApiId(spec: any): { passed: boolean; failures: Finding[] } 
     failures.push({
       ruleId: 'PREREQ-API-ID',
       severity: 'critical',
-      message: 'API specification missing required x-api-id. Generate one using generate_api_id tool.',
+      message: `API specification missing required x-api-id. 
+
+To fix this:
+1. Run: npx tsx src/mcp/tools/api-id-generator.ts
+2. Copy the generated ID
+3. Add to your OpenAPI spec:
+   info:
+     x-api-id: <generated-id>`,
       location: '$.info',
       category: 'prerequisites',
-      fixHint: 'Use generate_api_id MCP tool to create a unique API identifier and add it to info.x-api-id'
+      fixHint: 'Run: npx tsx src/mcp/tools/api-id-generator.ts'
     });
   } else {
     // Validate ID format

@@ -102,3 +102,9 @@ export function generateApiIdWithLineage(
   
   return { apiId };
 }
+
+// CLI execution
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const apiId = generateApiId();
+  console.log(getApiIdInstructions(apiId));
+}

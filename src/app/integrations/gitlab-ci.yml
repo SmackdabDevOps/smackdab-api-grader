@@ -1,0 +1,397 @@
+# GitLab CI/CD Integration for API Grader
+# Add this to your .gitlab-ci.yml file
+
+variables:
+  API_GRADER_VERSION: "latest"
+  API_GRADER_MIN_GRADE: "70"
+  API_GRADER_FILES: "**/*.{yaml,yml,json}"
+  API_GRADER_FAIL_ON_ERRORS: "true"
+  API_GRADER_AUTO_FIX: "false"
+  API_GRADER_SECURITY_SCAN: "true"
+  API_GRADER_COMPLIANCE_CHECKS: "OpenAPI,REST,OWASP"
+
+stages:
+  - validate
+  - grade
+  - security
+  - report
+  - deploy
+
+# Base job template
+.api_grader_base:
+  image: node:18-alpine
+  before_script:
+    - npm install -g @apigrader/cli@${API_GRADER_VERSION}
+    - apigrader configure --api-key=${API_GRADER_KEY}
+  artifacts:
+    when: always
+    paths:
+      - api-grading-report.html
+      - api-grading-results.json
+      - api-security-report.json
+    reports:
+      junit: api-grading-junit.xml
+    expire_in: 30 days
+
+# Validate API specifications
+api:validate:
+  extends: .api_grader_base
+  stage: validate
+  script:
+    - echo "Validating API specifications..."
+    - |
+      for file in $(find . -type f \( -name "*.yaml" -o -name "*.yml" -o -name "*.json" \) | grep -E "(openapi|swagger|asyncapi|graphql)"); do
+        echo "Validating $file..."
+        apigrader validate "$file" || exit 1
+      done
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# Grade API specifications
+api:grade:
+  extends: .api_grader_base
+  stage: grade
+  script:
+    - echo "Grading API specifications..."
+    - |
+      total_grade=0
+      total_issues=0
+      file_count=0
+      
+      echo '<?xml version="1.0" encoding="UTF-8"?>' > api-grading-junit.xml
+      echo '<testsuites>' >> api-grading-junit.xml
+      
+      for file in $(find . -type f \( -name "*.yaml" -o -name "*.yml" -o -name "*.json" \) | grep -E "(openapi|swagger|asyncapi|graphql)"); do
+        echo "Grading $file..."
+        
+        result=$(apigrader grade "$file" --format=json)
+        grade=$(echo "$result" | jq -r '.grade')
+        issues=$(echo "$result" | jq -r '.issues | length')
+        
+        total_grade=$((total_grade + grade))
+        total_issues=$((total_issues + issues))
+        file_count=$((file_count + 1))
+        
+        # Generate JUnit XML for GitLab test reports
+        echo '<testsuite name="'$file'" tests="1">' >> api-grading-junit.xml
+        
+        if [ "$grade" -ge "$API_GRADER_MIN_GRADE" ]; then
+          echo '<testcase name="API Grade" classname="'$file'" time="1.0">' >> api-grading-junit.xml
+          echo '<system-out>Grade: '$grade'/100, Issues: '$issues'</system-out>' >> api-grading-junit.xml
+          echo '</testcase>' >> api-grading-junit.xml
+        else
+          echo '<testcase name="API Grade" classname="'$file'" time="1.0">' >> api-grading-junit.xml
+          echo '<failure message="Grade '$grade' below threshold '$API_GRADER_MIN_GRADE'">' >> api-grading-junit.xml
+          echo "$result" | jq -r '.issues[] | "[\(.severity)] \(.message)"' >> api-grading-junit.xml
+          echo '</failure>' >> api-grading-junit.xml
+          echo '</testcase>' >> api-grading-junit.xml
+          
+          if [ "$API_GRADER_FAIL_ON_ERRORS" = "true" ]; then
+            exit_code=1
+          fi
+        fi
+        
+        echo '</testsuite>' >> api-grading-junit.xml
+      done
+      
+      echo '</testsuites>' >> api-grading-junit.xml
+      
+      # Calculate average grade
+      if [ "$file_count" -gt 0 ]; then
+        avg_grade=$((total_grade / file_count))
+      else
+        avg_grade=0
+      fi
+      
+      # Save results
+      echo "{\"average_grade\": $avg_grade, \"total_issues\": $total_issues, \"files\": $file_count}" > api-grading-results.json
+      
+      # Set CI variable for badge
+      echo "API_GRADE=$avg_grade" >> grade.env
+      
+      # Create GitLab comment
+      echo "## API Grading Results" > comment.md
+      echo "" >> comment.md
+      echo "**Average Grade**: $avg_grade/100" >> comment.md
+      echo "**Total Issues**: $total_issues" >> comment.md
+      echo "**Files Graded**: $file_count" >> comment.md
+      
+      # Fail if below threshold
+      if [ "$avg_grade" -lt "$API_GRADER_MIN_GRADE" ] && [ "$API_GRADER_FAIL_ON_ERRORS" = "true" ]; then
+        echo "ERROR: Average grade $avg_grade is below threshold $API_GRADER_MIN_GRADE"
+        exit 1
+      fi
+      
+      exit ${exit_code:-0}
+  artifacts:
+    reports:
+      dotenv: grade.env
+  coverage: '/Average Grade: (\d+)/'
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# Security scan
+api:security:
+  extends: .api_grader_base
+  stage: security
+  script:
+    - echo "Running security scan on API specifications..."
+    - |
+      total_vulnerabilities=0
+      critical_vulns=0
+      
+      echo '{"vulnerabilities": [' > api-security-report.json
+      first=true
+      
+      for file in $(find . -type f \( -name "*.yaml" -o -name "*.yml" -o -name "*.json" \) | grep -E "(openapi|swagger|asyncapi|graphql)"); do
+        echo "Scanning $file for security issues..."
+        
+        result=$(apigrader security-scan "$file" --format=json)
+        vulns=$(echo "$result" | jq -r '.vulnerabilities | length')
+        total_vulnerabilities=$((total_vulnerabilities + vulns))
+        
+        if [ "$vulns" -gt 0 ]; then
+          echo "$result" | jq -r '.vulnerabilities[] | select(.severity == "critical")' | while read -r vuln; do
+            critical_vulns=$((critical_vulns + 1))
+          done
+          
+          # Add to security report
+          if [ "$first" = false ]; then
+            echo ',' >> api-security-report.json
+          fi
+          first=false
+          
+          echo "$result" | jq '.vulnerabilities[] | {
+            "id": .id,
+            "category": "api-security",
+            "name": .name,
+            "message": .message,
+            "description": .description,
+            "severity": .severity,
+            "solution": .fix,
+            "location": {
+              "file": "'$file'",
+              "start_line": .line
+            },
+            "identifiers": [{
+              "type": "cwe",
+              "name": .cwe,
+              "value": .cwe
+            }]
+          }' >> api-security-report.json
+        fi
+      done
+      
+      echo ']}' >> api-security-report.json
+      
+      # Fail on critical vulnerabilities
+      if [ "$critical_vulns" -gt 0 ] && [ "$API_GRADER_SECURITY_SCAN" = "true" ]; then
+        echo "ERROR: Found $critical_vulns critical security vulnerabilities"
+        exit 1
+      fi
+  artifacts:
+    reports:
+      sast: api-security-report.json
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# Compliance checks
+api:compliance:
+  extends: .api_grader_base
+  stage: grade
+  script:
+    - echo "Running compliance checks..."
+    - |
+      IFS=',' read -ra STANDARDS <<< "$API_GRADER_COMPLIANCE_CHECKS"
+      
+      all_compliant=true
+      
+      for standard in "${STANDARDS[@]}"; do
+        echo "Checking $standard compliance..."
+        
+        for file in $(find . -type f \( -name "*.yaml" -o -name "*.yml" -o -name "*.json" \) | grep -E "(openapi|swagger|asyncapi|graphql)"); do
+          result=$(apigrader compliance --standard="$standard" --file="$file" --format=json)
+          compliant=$(echo "$result" | jq -r '.compliant')
+          
+          if [ "$compliant" = "false" ]; then
+            all_compliant=false
+            echo "WARNING: $file is not $standard compliant"
+            echo "$result" | jq -r '.violations[]' | while read -r violation; do
+              echo "  - $violation"
+            done
+          fi
+        done
+      done
+      
+      if [ "$all_compliant" = false ] && [ "$API_GRADER_FAIL_ON_ERRORS" = "true" ]; then
+        exit 1
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# Auto-fix issues
+api:autofix:
+  extends: .api_grader_base
+  stage: grade
+  script:
+    - echo "Applying automatic fixes..."
+    - |
+      if [ "$API_GRADER_AUTO_FIX" = "true" ]; then
+        fixed_count=0
+        
+        for file in $(find . -type f \( -name "*.yaml" -o -name "*.yml" -o -name "*.json" \) | grep -E "(openapi|swagger|asyncapi|graphql)"); do
+          echo "Attempting to fix issues in $file..."
+          
+          result=$(apigrader fix "$file" --auto --format=json)
+          fixed=$(echo "$result" | jq -r '.fixed | length')
+          fixed_count=$((fixed_count + fixed))
+          
+          if [ "$fixed" -gt 0 ]; then
+            echo "Fixed $fixed issues in $file"
+          fi
+        done
+        
+        if [ "$fixed_count" -gt 0 ]; then
+          echo "Total issues fixed: $fixed_count"
+          
+          # Commit fixes if in merge request
+          if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+            git config --global user.email "gitlab-ci@apigrader.com"
+            git config --global user.name "API Grader Bot"
+            git add -A
+            git commit -m "Auto-fix $fixed_count API issues [skip ci]"
+            git push origin HEAD:$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+          fi
+        fi
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $API_GRADER_AUTO_FIX == "true"'
+      allow_failure: true
+
+# Generate HTML report
+api:report:
+  extends: .api_grader_base
+  stage: report
+  dependencies:
+    - api:grade
+    - api:security
+  script:
+    - echo "Generating comprehensive report..."
+    - |
+      apigrader report \
+        --format=html \
+        --include-security \
+        --include-compliance \
+        --include-metrics \
+        --output=api-grading-report.html
+      
+      # Upload to GitLab Pages if configured
+      if [ -n "$CI_PAGES_URL" ]; then
+        mkdir -p public
+        cp api-grading-report.html public/index.html
+        echo "Report will be available at: $CI_PAGES_URL"
+      fi
+      
+      # Upload to API Grader dashboard
+      result=$(apigrader upload \
+        --project="$CI_PROJECT_PATH" \
+        --branch="$CI_COMMIT_REF_NAME" \
+        --commit="$CI_COMMIT_SHA" \
+        --pipeline="$CI_PIPELINE_ID" \
+        --format=json)
+      
+      report_url=$(echo "$result" | jq -r '.url')
+      echo "Dashboard URL: $report_url"
+      
+      # Add comment to merge request
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        grade=$(cat api-grading-results.json | jq -r '.average_grade')
+        issues=$(cat api-grading-results.json | jq -r '.total_issues')
+        
+        comment="## 🎯 API Grading Results\n\n"
+        comment="$comment**Grade**: $grade/100\n"
+        comment="$comment**Issues**: $issues\n\n"
+        comment="$comment[View Detailed Report]($report_url)\n\n"
+        comment="$comment---\n*Graded by [API Grader](https://apigrader.com)*"
+        
+        curl --request POST \
+          --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+          --data "body=$comment" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID/notes"
+      fi
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# Deploy to Pages
+pages:
+  stage: deploy
+  dependencies:
+    - api:report
+  script:
+    - echo "Deploying report to GitLab Pages..."
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# Template for manual grade check
+api:grade:manual:
+  extends: .api_grader_base
+  stage: grade
+  when: manual
+  script:
+    - |
+      echo "Manual API grading triggered..."
+      apigrader grade --interactive
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+# Badge generation job
+api:badge:
+  stage: .post
+  dependencies:
+    - api:grade
+  image: alpine:latest
+  script:
+    - |
+      grade=$(cat api-grading-results.json | jq -r '.average_grade')
+      
+      if [ "$grade" -ge 90 ]; then
+        color="brightgreen"
+      elif [ "$grade" -ge 70 ]; then
+        color="yellow"
+      else
+        color="red"
+      fi
+      
+      # Generate badge URL
+      badge_url="https://img.shields.io/badge/API%20Grade-${grade}%2F100-${color}"
+      echo "Badge URL: $badge_url"
+      
+      # Update README if exists
+      if [ -f "README.md" ]; then
+        sed -i "s|https://img.shields.io/badge/API%20Grade-[0-9]*/100-[a-z]*|$badge_url|g" README.md
+        
+        if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+          git add README.md
+          git commit -m "Update API grade badge [skip ci]" || true
+          git push origin HEAD:$CI_COMMIT_BRANCH || true
+        fi
+      fi
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+        - "**/*.{yaml,yml,json}"
+
+# Include reusable pipeline
+include:
+  - remote: 'https://gitlab.com/api-grader/ci-templates/-/raw/main/api-grader.yml'

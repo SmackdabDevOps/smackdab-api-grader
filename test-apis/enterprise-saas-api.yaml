@@ -1,0 +1,103 @@
+openapi: 3.0.0
+info:
+  title: Enterprise CRM Platform API
+  version: 1.0.0
+  description: Multi-tenant enterprise CRM with strict security requirements
+  x-api-id: saas_crm_2024_12_01
+servers:
+  - url: https://api.enterprise-crm.com
+    description: Production multi-tenant environment
+paths:
+  /api/v1/contacts:
+    get:
+      summary: List contacts for organization
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ApiKey'
+      responses:
+        '200':
+          description: List of contacts
+      security:
+        - oauth2: [read:contacts]
+    post:
+      summary: Create new contact
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ApiKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+      responses:
+        '201':
+          description: Contact created
+      security:
+        - oauth2: [write:contacts]
+  /api/v1/admin/organizations:
+    get:
+      summary: List all organizations (admin only)
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+      responses:
+        '200':
+          description: List of organizations
+      security:
+        - oauth2: [admin:read]
+  /api/v1/billing/invoices:
+    get:
+      summary: Get billing invoices
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: List of invoices
+      security:
+        - oauth2: [billing:read]
+  /api/v1/audit/logs:
+    get:
+      summary: Get audit logs for organization
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: Audit log entries
+      security:
+        - oauth2: [audit:read]
+components:
+  parameters:
+    OrganizationId:
+      in: header
+      name: X-Organization-ID
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Organization identifier for multi-tenant isolation
+    ApiKey:
+      in: header
+      name: X-API-Key
+      required: true
+      schema:
+        type: string
+      description: API key for authentication
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.enterprise-crm.com/oauth/authorize
+          tokenUrl: https://auth.enterprise-crm.com/oauth/token
+          scopes:
+            read:contacts: Read contact information
+            write:contacts: Create and update contacts
+            admin:read: Read admin data
+            admin:write: Modify admin settings
+            billing:read: View billing information
+            audit:read: View audit logs

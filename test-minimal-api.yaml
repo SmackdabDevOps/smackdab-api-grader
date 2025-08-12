@@ -1,0 +1,16 @@
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+  x-api-id: api_1754946006243_757d2eeeca6447f3
+paths:
+  /test:
+    get:
+      responses:
+        '200':
+          description: OK
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
