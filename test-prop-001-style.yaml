@@ -1,0 +1,91 @@
+# Test API similar to PROP-001 structure
+openapi: 3.0.3
+info:
+  title: Property Management API
+  version: 2.0.0
+  description: API following correct OpenAPI patterns
+  x-api-id: PROP_001_2025_01_12_abc123def456
+
+servers:
+  - url: https://api.example.com/api/v2
+    description: Production server with version in URL
+
+security:
+  - oauth2: []
+  - jwt: []
+
+paths:
+  /properties:
+    get:
+      summary: List properties
+      operationId: listProperties
+      security:
+        - oauth2: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+    
+    post:
+      summary: Create property
+      operationId: createProperty
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/BranchId'
+      responses:
+        '201':
+          description: Created
+
+  /properties/{id}:
+    get:
+      summary: Get property
+      operationId: getProperty
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/oauth/authorize
+          tokenUrl: https://auth.example.com/oauth/token
+          scopes:
+            read: Read access
+            write: Write access
+    jwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    OrganizationId:
+      name: X-Organization-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+    
+    BranchId:
+      name: X-Branch-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid

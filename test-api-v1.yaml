@@ -1,0 +1,72 @@
+# Test API Version 1 - With intentional issues for testing
+openapi: 3.0.3
+info:
+  title: Test Inventory API
+  version: 1.0.0
+  description: Basic inventory API with some issues
+  x-api-id: TestOrg_1754995379946_05fd89d00e5d3b75
+
+servers:
+  - url: http://localhost:3000
+
+paths:
+  /products:
+    get:
+      summary: Get products
+      description: List all products
+      # ISSUE 1: Missing operationId
+      # ISSUE 2: Missing security
+      # ISSUE 3: Missing required headers (X-Organization-ID)
+      responses:
+        '200':
+          description: Success
+          # ISSUE 4: Missing proper response envelope
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+        # ISSUE 5: Missing error responses (400, 401, 500)
+    
+    post:
+      summary: Create product
+      # ISSUE 6: Missing operationId
+      # ISSUE 7: Missing idempotency key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                price:
+                  type: number
+      responses:
+        '201':
+          description: Created
+          # ISSUE 8: Missing Location header
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /products/{id}:
+    # ISSUE 9: Missing parameter definition
+    get:
+      summary: Get product by ID
+      responses:
+        '200':
+          description: Success
+        # ISSUE 10: Missing 404 response
+
+# ISSUE 11: Missing components section with security schemes
+# ISSUE 12: Missing pagination parameters
+# ISSUE 13: Missing rate limiting headers
+# ISSUE 14: No HATEOAS links

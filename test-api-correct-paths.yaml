@@ -1,0 +1,178 @@
+# Test API with CORRECT path patterns (relative to server URL)
+openapi: 3.0.3
+info:
+  title: Correctly Structured API
+  version: 2.0.0
+  description: API following OpenAPI standards with paths relative to server URL
+  x-api-id: TestOrg_CorrectPaths_2025
+
+servers:
+  - url: https://api.example.com/api/v2
+    description: Production server with version in URL
+  - url: http://localhost:3000/api/v2
+    description: Development server with version in URL
+
+security:
+  - apiKey: []
+
+paths:
+  # CORRECT: Paths are relative to server URL
+  # Full URL would be: https://api.example.com/api/v2/products
+  /products:
+    get:
+      summary: List products
+      operationId: listProducts
+      security:
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    
+    post:
+      summary: Create product
+      operationId: createProduct
+      security:
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProduct'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      summary: Get product
+      operationId: getProduct
+      security:
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    OrganizationId:
+      name: X-Organization-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    IdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      schema:
+        type: string
+
+    ProductId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    Product:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+    CreateProduct:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+
+    ProductList:
+      type: object
+      required:
+        - data
+        - metadata
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        metadata:
+          type: object
+          properties:
+            request_id:
+              type: string
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

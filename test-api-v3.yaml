@@ -1,0 +1,320 @@
+# Test API Version 3 - Fully improved to pass prerequisites
+openapi: 3.0.3
+info:
+  title: Test Inventory API
+  version: 1.0.0
+  description: Basic inventory API - fully compliant
+  x-api-id: TestOrg_1754995379946_05fd89d00e5d3b75
+
+servers:
+  - url: http://localhost:3000
+
+security:
+  - apiKey: []
+
+paths:
+  /products:
+    get:
+      summary: Get products
+      description: List all products with pagination
+      operationId: getProducts
+      security:
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Rate-Limit-Limit:
+              schema:
+                type: integer
+            X-Rate-Limit-Remaining:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    
+    post:
+      summary: Create product
+      operationId: createProduct
+      security:
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/OrganizationId'
+    get:
+      summary: Get product by ID
+      operationId: getProductById
+      security:
+        - apiKey: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    OrganizationId:
+      name: X-Organization-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Organization identifier
+
+    IdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Idempotency key for safe retries
+
+    ProductId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Product identifier
+
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    PageCursor:
+      name: page_cursor
+      in: query
+      required: false
+      schema:
+        type: string
+
+  schemas:
+    Product:
+      type: object
+      required:
+        - id
+        - name
+        - price
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        price:
+          type: number
+          format: decimal
+          minimum: 0
+
+    CreateProductRequest:
+      type: object
+      required:
+        - name
+        - price
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        price:
+          type: number
+          format: decimal
+          minimum: 0
+
+    ProductResponse:
+      type: object
+      required:
+        - data
+        - metadata
+      properties:
+        data:
+          $ref: '#/components/schemas/Product'
+        metadata:
+          $ref: '#/components/schemas/ResponseMetadata'
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    ProductListResponse:
+      type: object
+      required:
+        - data
+        - metadata
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        metadata:
+          $ref: '#/components/schemas/ResponseMetadata'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    ResponseMetadata:
+      type: object
+      required:
+        - request_id
+        - timestamp
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      required:
+        - has_more
+      properties:
+        has_more:
+          type: boolean
+        next_cursor:
+          type: string
+        total_count:
+          type: integer
+
+    Links:
+      type: object
+      properties:
+        self:
+          type: string
+          format: uri
+        next:
+          type: string
+          format: uri
+        prev:
+          type: string
+          format: uri
+
+    Error:
+      type: object
+      required:
+        - error
+        - metadata
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+        metadata:
+          $ref: '#/components/schemas/ResponseMetadata'
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

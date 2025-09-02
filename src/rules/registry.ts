@@ -109,7 +109,7 @@ function hasParameter(operation: any, paramName: string, paramIn: string = 'head
 
 function getByPath(obj: any, path: string): any {
   // Improved JSON path resolver
-  // Handle paths like: $.paths['/api/v2/users'].post
+  // Handle paths like: $.paths['/users'].post
   const cleanPath = path.replace(/^\$\.?/, '');
   
   // Parse path segments, handling bracket notation
@@ -312,9 +312,9 @@ export const RULE_CRUD_OPERATIONS: Rule = {
     for (const [resource, methods] of resources) {
       targets.push({
         type: 'path',
-        location: `$.paths['/api/v2/${resource}']`,
+        location: `$.paths['/${resource}']`,
         identifier: `Resource: ${resource}`,
-        path: `/api/v2/${resource}`
+        path: `/${resource}`
       });
     }
     
@@ -327,7 +327,7 @@ export const RULE_CRUD_OPERATIONS: Rule = {
     const paths = Object.keys(spec.paths || {});
     
     const hasOps = requiredOps.filter(op => {
-      const pathPattern = new RegExp(`/api/v\\d+/${resource}`);
+      const pathPattern = new RegExp(`/${resource}`);
       return paths.some(p => p.match(pathPattern) && spec.paths[p][op]);
     });
     
@@ -1015,21 +1015,21 @@ export const RULE_NAMING_CONSISTENCY: Rule = {
   validate: (target, spec) => {
     const path = target.path!;
     
-    // Check for namespace
-    const hasNamespace = path.startsWith('/api/v2/');
+    // Paths should be relative to server URL, not include /api/v2
+    // OpenAPI spec: paths are relative to the server URL
+    const hasValidStart = path.startsWith('/');
     
     // Check for consistent resource naming (lowercase, plural)
     const parts = path.split('/').filter(p => p && !p.startsWith('{'));
-    const resources = parts.slice(2); // Skip /api/v2
-    const hasConsistentNaming = resources.every(r => 
+    const hasConsistentNaming = parts.every(r => 
       r === r.toLowerCase() && !r.includes('_')
     );
     
     return {
-      passed: hasNamespace && hasConsistentNaming,
-      message: !hasNamespace ? 'Path must start with /api/v2/' :
+      passed: hasValidStart && hasConsistentNaming,
+      message: !hasValidStart ? 'Path must start with /' :
                !hasConsistentNaming ? 'Use lowercase, hyphenated resource names' : undefined,
-      fixHint: 'Follow RESTful naming conventions',
+      fixHint: 'Follow RESTful naming conventions (paths relative to server URL)',
       confidence: 0.9
     };
   },

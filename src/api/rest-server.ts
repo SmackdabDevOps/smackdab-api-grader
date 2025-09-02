@@ -460,6 +460,112 @@ app.post('/sse', async (req, res) => {
     }
   );
   
+  // Register lint_mermaid tool
+  mcpServer.registerTool(
+    'lint_mermaid',
+    {
+      description: 'Lint a Mermaid diagram using @mermaid-js/parser and report syntax issues.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: 'Mermaid code (base64) or URL' },
+          isUrl: { type: 'boolean', description: 'Whether content is a URL' },
+          diagramType: { type: 'string', description: 'Diagram type (e.g., flowchart, sequenceDiagram, classDiagram, stateDiagram, erDiagram, gantt, journey, mindmap, pie, gitGraph, requirementDiagram, c4, quadrantChart, timeline, sankey, xychart)' }
+        },
+        required: ['content']
+      }
+    },
+    async (params: any) => {
+      try {
+        let code: string;
+        if (params.isUrl) {
+          const response = await fetch(params.content);
+          code = await response.text();
+        } else {
+          // Expect base64-encoded content
+          code = Buffer.from(params.content, 'base64').toString('utf-8');
+        }
+
+        function inferDiagramType(src: string): string | undefined {
+          const head = src.trim().split(/\r?\n/)[0]?.trim() ?? '';
+          const s = head.toLowerCase();
+          if (/^(flowchart|graph)\b/.test(s)) return 'flowchart';
+          if (/^sequence\s*diagram|^sequencediagram/.test(s)) return 'sequenceDiagram';
+          if (/^class\s*diagram|^classdiagram/.test(s)) return 'classDiagram';
+          if (/^state\s*diagram|^statediagram/.test(s)) return 'stateDiagram';
+          if (/^er\s*diagram|^erdiagram/.test(s)) return 'erDiagram';
+          if (/^gantt\b/.test(s)) return 'gantt';
+          if (/^journey\b/.test(s)) return 'journey';
+          if (/^mindmap\b/.test(s)) return 'mindmap';
+          if (/^pie\b/.test(s)) return 'pie';
+          if (/^gitgraph\b/.test(s)) return 'gitGraph';
+          if (/^requirement\s*diagram|^requirementdiagram/.test(s)) return 'requirementDiagram';
+          if (/^c4\b/.test(s)) return 'c4';
+          if (/^quadrant\s*chart|^quadrantchart/.test(s)) return 'quadrantChart';
+          if (/^timeline\b/.test(s)) return 'timeline';
+          if (/^sankey\b/.test(s)) return 'sankey';
+          if (/^xychart\b/.test(s)) return 'xychart';
+          return undefined;
+        }
+
+        const usedType = params.diagramType || inferDiagramType(code);
+        if (!usedType) {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                ok: false,
+                errors: [{ message: 'Unable to infer diagram type. Provide diagramType explicitly.' }]
+              }, null, 2)
+            }],
+            isError: true
+          };
+        }
+
+        const parser = await import('@mermaid-js/parser');
+        const parseFn: any = (parser as any).parse || (parser as any).default?.parse;
+        if (typeof parseFn !== 'function') {
+          throw new Error('Parser parse function not found on @mermaid-js/parser');
+        }
+
+        try {
+          const ast = parseFn(usedType, code);
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ ok: true, diagramType: usedType, errors: [], astSummary: ast ? { hasAst: true } : { hasAst: false } }, null, 2)
+            }]
+          };
+        } catch (err: any) {
+          const msg = err?.message || String(err);
+          const lineColMatch = msg.match(/line\s+(\d+),\s*column\s+(\d+)/i) || msg.match(/Ln\s*(\d+),\s*Col\s*(\d+)/i);
+          const offsetMatch = msg.match(/offset\s*(\d+)/i);
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                ok: false,
+                diagramType: usedType,
+                errors: [{
+                  message: msg,
+                  line: lineColMatch ? Number(lineColMatch[1]) : undefined,
+                  column: lineColMatch ? Number(lineColMatch[2]) : undefined,
+                  offset: offsetMatch ? Number(offsetMatch[1]) : undefined
+                }]
+              }, null, 2)
+            }],
+            isError: true
+          };
+        }
+      } catch (error: any) {
+        return {
+          content: [{ type: 'text', text: `Error linting diagram: ${error.message}` }],
+          isError: true
+        };
+      }
+    }
+  );
+
   // Create SSE transport
   const transport = new SSEServerTransport('/sse', res);
   
